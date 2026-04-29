@@ -1,0 +1,57 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: lint • typecheck • test • build (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: latest
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Provision .venv + install dev deps
+        run: |
+          uv venv --python ${{ matrix.python-version }} .venv
+          uv pip install --python .venv -e ".[dev]"
+
+      - name: Lint (ruff)
+        run: .venv/bin/ruff check src tests scripts
+
+      - name: Typecheck (mypy --strict)
+        run: .venv/bin/mypy
+
+      - name: Test (offline, uses pinned spec fixture)
+        run: .venv/bin/pytest -m "not live" -v
+
+      - name: Build sdist + wheel
+        run: uv build
+
+      - name: Validate distribution metadata (twine check)
+        run: .venv/bin/twine check dist/*
+
+      - name: Upload built artifacts
+        if: matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/*
+          retention-days: 7

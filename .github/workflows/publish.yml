@@ -1,0 +1,116 @@
+name: publish
+
+# Publishes the Python SDK to PyPI when a tag matching `v*` is pushed.
+#
+# Tag convention: `v0.1.0a1`, `v0.2.0`, etc. The version after the `v` prefix
+# MUST match the version in pyproject.toml. A guard step checks this and
+# fails the run if they drift.
+#
+# Authentication: PyPI OIDC trusted publishing (no API tokens). Setup steps
+# (one-time, on PyPI side):
+#   1. Create the project on PyPI (first publish can also do this).
+#   2. https://pypi.org/manage/account/publishing/ → Add a pending publisher.
+#   3. Owner: Options-Analysis-Suite; Repository: options-analysis-suite-python;
+#      Workflow filename: publish.yml; Environment: pypi
+#
+# Once configured, push a tag:
+#   git tag v0.1.0a1 && git push origin v0.1.0a1
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build from (must already exist, must match v*)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build sdist + wheel
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: latest
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Verify pyproject version matches the tag
+        run: |
+          TAG_REF="${{ github.event.inputs.tag || github.ref_name }}"
+          # Strip the leading `v` prefix.
+          TAG_VERSION="${TAG_REF#v}"
+          PYPROJECT_VERSION=$(grep -E '^version\s*=' pyproject.toml | head -n1 | sed -E 's/.*"([^"]+)".*/\1/')
+          echo "Tag version:        $TAG_VERSION"
+          echo "pyproject version:  $PYPROJECT_VERSION"
+          if [ "$TAG_VERSION" != "$PYPROJECT_VERSION" ]; then
+            echo "::error::Tag $TAG_REF does not match pyproject.toml version $PYPROJECT_VERSION"
+            exit 1
+          fi
+
+      - name: Provision .venv + install dev deps
+        run: |
+          uv venv --python 3.12 .venv
+          uv pip install --python .venv -e ".[dev]"
+
+      - name: Lint
+        run: .venv/bin/ruff check src tests scripts
+
+      - name: Typecheck
+        run: .venv/bin/mypy
+
+      - name: Test (offline)
+        run: .venv/bin/pytest -m "not live" -v
+
+      - name: Build sdist + wheel
+        run: uv build
+
+      - name: Validate distribution metadata (twine check)
+        # Fails fast on bad metadata BEFORE the publish job (which would
+        # otherwise hit the `pypi` environment approval gate before
+        # discovering the same issue).
+        run: .venv/bin/twine check dist/*
+
+      - name: Upload built artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/*
+          retention-days: 14
+
+  publish-pypi:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/options-analysis-suite
+    permissions:
+      # OIDC token for PyPI Trusted Publishing — no API token needed.
+      id-token: write
+    steps:
+      - name: Download built artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
+          # `print-hash: true` makes the published file digest visible in the run log
+          # for supply-chain audit purposes.
+          print-hash: true
