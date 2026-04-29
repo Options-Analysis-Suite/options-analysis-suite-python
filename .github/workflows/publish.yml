@@ -48,8 +48,9 @@ jobs:
         run: uv python install 3.12
 
       - name: Verify pyproject version matches the tag
+        env:
+          TAG_REF: ${{ github.event.inputs.tag || github.ref_name }}
         run: |
-          TAG_REF="${{ github.event.inputs.tag || github.ref_name }}"
           # Strip the leading `v` prefix.
           TAG_VERSION="${TAG_REF#v}"
           PYPROJECT_VERSION=$(grep -E '^version\s*=' pyproject.toml | head -n1 | sed -E 's/.*"([^"]+)".*/\1/')
