@@ -80,6 +80,45 @@ def test_exposure_full_returns_oneof_full_result() -> None:
 
 
 @respx.mock
+def test_scenario_matrix_returns_typed_cells() -> None:
+    """Scenario matrix cells are structured objects, not bare floats."""
+    respx.post("https://data.optionsanalysissuite.com/v1/compute/scenario").mock(
+        return_value=Response(200, json={
+            "spotChanges": [-0.05, 0.0, 0.05],
+            "volChanges": [-0.1, 0.0, 0.1],
+            "matrix": [[{
+                "spotChange": -0.05,
+                "volChange": -0.1,
+                "spot": 95.0,
+                "volatility": 0.18,
+                "price": 5.25,
+                "pnl": -1.0,
+                "pnlPercent": -16.0,
+            }]],
+        })
+    )
+
+    with OASClient(api_key="oas_test_xyz") as client:
+        result = client.scenario(
+            is_call=True,
+            S=100.0,
+            K=100.0,
+            r=0.05,
+            sigma=0.2,
+            t=0.25,
+            spot_changes=[-0.05, 0.0, 0.05],
+            vol_changes=[-0.1, 0.0, 0.1],
+        )
+
+    assert result.matrix is not None
+    cell = result.matrix[0][0]
+    assert cell.spotChange == -0.05
+    assert cell.volChange == -0.1
+    assert cell.price == 5.25
+    assert cell.pnlPercent == -16.0
+
+
+@respx.mock
 def test_price_sends_snake_case_kwargs_as_camelcase_json() -> None:
     """The single most likely place for a typo bug is the snake→camel mapping."""
     captured: dict[str, Any] = {}

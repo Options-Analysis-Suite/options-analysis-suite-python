@@ -12,6 +12,18 @@ will be called out in this file with **Breaking** at the start of the bullet.
 
 ## [Unreleased]
 
+## [0.1.0a3] — 2026-04-29
+
+Scenario response schema fix. This release updates the generated models to
+match the live `/v1/compute/scenario` response.
+
+### Fixed
+
+- `OASClient.scenario(...)` now parses live scenario matrices correctly.
+  Matrix cells are structured objects with `spotChange`, `volChange`, `spot`,
+  `volatility`, `price`, `pnl`, and `pnlPercent`, not bare floats.
+- Added mocked and live regression coverage for the scenario matrix shape.
+
 ## [0.1.0a2] — 2026-04-29
 
 Documentation and packaging cleanup. No code changes; the `oas` runtime
@@ -86,6 +98,7 @@ checked against the deployed OpenAPI spec.
   upstream.
 - Sync-only client. `AsyncOASClient` deferred until there's a user need.
 
-[Unreleased]: https://github.com/Options-Analysis-Suite/options-analysis-suite-python/compare/v0.1.0a2...HEAD
+[Unreleased]: https://github.com/Options-Analysis-Suite/options-analysis-suite-python/compare/v0.1.0a3...HEAD
+[0.1.0a3]: https://github.com/Options-Analysis-Suite/options-analysis-suite-python/releases/tag/v0.1.0a3
 [0.1.0a2]: https://github.com/Options-Analysis-Suite/options-analysis-suite-python/releases/tag/v0.1.0a2
 [0.1.0a1]: https://github.com/Options-Analysis-Suite/options-analysis-suite-python/releases/tag/v0.1.0a1
