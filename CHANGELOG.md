@@ -12,6 +12,19 @@ will be called out in this file with **Breaking** at the start of the bullet.
 
 ## [Unreleased]
 
+## [0.1.0a4] — 2026-04-29
+
+README polish only. No code changes; runtime surface byte-identical to
+0.1.0a3.
+
+### Changed
+
+- Dropped the hardcoded version (`0.1.0a2`) from the README status
+  callout. PyPI displays the version prominently at the top of the
+  project page already; repeating it in the README just drifts on every
+  release. Status line is now `**Status: alpha**` and stays correct
+  release-over-release.
+
 ## [0.1.0a3] — 2026-04-29
 
 Scenario response schema fix. This release updates the generated models to
@@ -98,7 +111,8 @@ checked against the deployed OpenAPI spec.
   upstream.
 - Sync-only client. `AsyncOASClient` deferred until there's a user need.
 
-[Unreleased]: https://github.com/Options-Analysis-Suite/options-analysis-suite-python/compare/v0.1.0a3...HEAD
+[Unreleased]: https://github.com/Options-Analysis-Suite/options-analysis-suite-python/compare/v0.1.0a4...HEAD
+[0.1.0a4]: https://github.com/Options-Analysis-Suite/options-analysis-suite-python/releases/tag/v0.1.0a4
 [0.1.0a3]: https://github.com/Options-Analysis-Suite/options-analysis-suite-python/releases/tag/v0.1.0a3
 [0.1.0a2]: https://github.com/Options-Analysis-Suite/options-analysis-suite-python/releases/tag/v0.1.0a2
 [0.1.0a1]: https://github.com/Options-Analysis-Suite/options-analysis-suite-python/releases/tag/v0.1.0a1
