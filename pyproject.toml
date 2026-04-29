@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "options-analysis-suite"
-version = "0.1.0a1"
+version = "0.1.0a2"
 description = "Python SDK for the Options Analysis Suite API: 17 pricing models, auto-calibration, GEX/DEX exposure, IV surfaces, and pre-computed market data."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -46,8 +46,8 @@ codegen = [
 [project.urls]
 Homepage = "https://optionsanalysissuite.com"
 Documentation = "https://data.optionsanalysissuite.com/docs"
-Repository = "https://github.com/Options-Analysis-Suite/options-analysis-suite-python"
-Changelog = "https://github.com/Options-Analysis-Suite/options-analysis-suite-python/blob/main/CHANGELOG.md"
+Pricing = "https://optionsanalysissuite.com/pricing"
+"SDK Reference" = "https://optionsanalysissuite.com/developers/python"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/oas"]

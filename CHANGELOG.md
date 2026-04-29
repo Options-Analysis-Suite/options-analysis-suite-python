@@ -12,6 +12,21 @@ will be called out in this file with **Breaking** at the start of the bullet.
 
 ## [Unreleased]
 
+## [0.1.0a2] — 2026-04-29
+
+Documentation and packaging cleanup. No code changes; the `oas` runtime
+surface is byte-identical to `0.1.0a1`.
+
+### Changed
+
+- README slimmed to user-facing content only. Maintainer docs (dev setup,
+  drift gate, release process, spec-change matrix) moved to a separate
+  `MAINTAINING.md` that does not ship in the wheel/sdist and does not
+  render on the PyPI project page.
+- `[project.urls]` cleaned: dropped `Repository` and `Changelog` entries
+  (both pointed at a private GitHub repo and 404'd for PyPI visitors).
+  Added `Pricing` and `SDK Reference` URLs that point at public pages.
+
 ## [0.1.0a1] — 2026-04-28
 
 First public alpha. Architecture decided, full surface implemented, drift
@@ -71,5 +86,6 @@ checked against the deployed OpenAPI spec.
   upstream.
 - Sync-only client. `AsyncOASClient` deferred until there's a user need.
 
-[Unreleased]: https://github.com/Options-Analysis-Suite/options-analysis-suite-python/compare/v0.1.0a1...HEAD
+[Unreleased]: https://github.com/Options-Analysis-Suite/options-analysis-suite-python/compare/v0.1.0a2...HEAD
+[0.1.0a2]: https://github.com/Options-Analysis-Suite/options-analysis-suite-python/releases/tag/v0.1.0a2
 [0.1.0a1]: https://github.com/Options-Analysis-Suite/options-analysis-suite-python/releases/tag/v0.1.0a1
