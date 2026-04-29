@@ -51,6 +51,10 @@ sites.
 - `exposure()` docstring now reflects the actual strike-row schema
   (`strike_cents`, `stk_px_cents`, `c_oi`, `p_oi`, `gamma`).
 
+### Fixed
+
+- `oas.__version__` now matches the package metadata version.
+
 ## [0.1.0a4] — 2026-04-29
 
 README polish only. No code changes; runtime surface byte-identical to
