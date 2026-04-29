@@ -146,6 +146,8 @@ class OASClient:
         steps: int | None = None,
         is_american: bool | None = None,
         broker: BrokerCredentials | None = None,
+        detail: str | None = None,
+        histogram_bins: int | None = None,
     ) -> PriceResponse:
         """Price an option (operationId ``compute.price``).
 
@@ -153,6 +155,21 @@ class OASClient:
         ``symbol`` (plus tenor as ``t`` or ``expiry``) to let the API
         auto-fill from cached market data. ``broker`` is required when
         ``resolve={"calibration": True}``.
+
+        ``detail`` is honored only for ``model="mc"``:
+
+        * ``"summary"`` (default): scalar price + ``mcStats`` (stdError,
+          95% CI, effective path count).
+        * ``"distribution"``: adds a ``distribution`` block with
+          mean / min / max, 9 percentiles (p1, p5, p10, p25, p50, p75,
+          p90, p95, p99), and an equal-width histogram of the simulated
+          terminal underlying price.
+        * ``"full"``: adds ``fullPaths`` — the (subsampled) raw paths
+          matrix. Server enforces caps on path count and total points
+          serialized; ``fullPathsTruncated: True`` flags subsampling.
+
+        ``histogram_bins`` controls the bin count for ``detail="distribution"``
+        and ``detail="full"``; clamped to ``[2, 200]``, default 50.
         """
         payload = _drop_none({
             "model": model, "isCall": is_call, "K": K,
@@ -161,6 +178,8 @@ class OASClient:
             "resolve": resolve, "modelParams": model_params,
             "calibrationId": calibration_id, "steps": steps,
             "isAmerican": is_american,
+            "detail": detail,
+            "histogramBins": histogram_bins,
         })
         headers = dict(broker.headers()) if broker else None
         body = self._transport.request(
@@ -192,8 +211,33 @@ class OASClient:
     ) -> GreeksResponse:
         """Compute the full 17-Greek response (operationId ``compute.greeks``).
 
-        Set ``include_insight=True`` for exotic models to receive the
-        strategy-insight card. Same ticker-auto-fill rules as :meth:`price`.
+        All 17 models compute all 17 Greeks (Delta, Gamma, Vega, Theta, Rho,
+        Epsilon, Vanna, Charm, Vomma, Veta, Speed, Zomma, Color, Ultima,
+        Lambda, Phi, DcharmDvol). Analytical / native Greeks are used where
+        available; finite-difference bump-and-reprice fills the rest.
+
+        Args:
+            is_call: True for a call, False for a put.
+            K: Strike price (dollars).
+            model: One of ``"bs"``, ``"heston"``, ``"sabr"``, ``"jd"``,
+                ``"vg"``, ``"binomial"``, ``"pde"``, ``"fft"``, ``"mc"``,
+                ``"localvol"``, or one of the seven exotic codes
+                (``"barrier"``, ``"asian"``, ``"lookback"``, ``"digital"``,
+                ``"compound"``, ``"chooser"``, ``"multiasset"``).
+            S, r, q, sigma, t: Pricing inputs. Pass these explicitly OR
+                supply ``symbol`` (with ``t`` or ``expiry``) and let the API
+                auto-fill them from cached market data.
+            include_insight: Set True for exotic models to receive an
+                ``exoticInsight`` strategy card alongside the Greeks.
+            broker: BYOK credentials when ``resolve={"calibration": True}``.
+
+        Returns:
+            :class:`GreeksResponse` with every Greek typed at the top level.
+
+        Raises:
+            ValidationError: bad inputs.
+            AuthenticationError / PermissionDeniedError: API key / scope.
+            RateLimitError: per-minute or per-day bucket exhausted.
         """
         payload = _drop_none({
             "model": model, "isCall": is_call, "K": K,
@@ -221,10 +265,32 @@ class OASClient:
     ) -> ExposureResponse:
         """Compute Greek exposure profile (operationId ``compute.exposure``).
 
-        Default response is the full ``ExposureFullResult`` wrapper
-        (``{snapshot, byStrike}``); pass ``detail="snapshot"`` for the
-        flat ``ExposureSnapshot`` shape. The :class:`ExposureResponse`
-        model is a ``oneOf`` union — access ``.root`` to dispatch.
+        Aggregates per-strike option exposure (GEX, DEX, VEX, Vanna, Charm,
+        Vomma) under the standard dealer-hedging convention: retail is
+        assumed net long calls and net short puts; dealers take the
+        offsetting position.
+
+        Args:
+            strikes: List of per-strike rows. Required keys: ``strike_cents``,
+                ``stk_px_cents``, ``c_oi``, ``p_oi``, ``gamma``. Optional:
+                ``delta``, ``vega``, ``smooth_smv_vol``, ``c_mid_iv``,
+                ``p_mid_iv``, ``yte``, ``expir_date``.
+            spot_price: Current spot price for the underlying (in dollars).
+            risk_free_rate: Annual rate (decimal). Server defaults to 0.05.
+            dividend_yield: Annual yield (decimal). Server defaults to 0.
+            wall_max_dte: Cap (days) for considering a strike a "wall"
+                candidate. Server-side default if omitted.
+            detail: ``"snapshot"`` for the flat :class:`ExposureSnapshot`
+                shape; omit (or any other value) for the full
+                ``{snapshot, byStrike}`` wrapper.
+
+        Returns:
+            :class:`ExposureResponse` — a ``oneOf`` union. Access
+            ``.root`` to dispatch on the variant.
+
+        Raises:
+            ValidationError: malformed strike rows.
+            AuthenticationError / PermissionDeniedError: API key / scope.
         """
         payload = _drop_none({
             "strikes": strikes, "spotPrice": spot_price,
@@ -250,7 +316,24 @@ class OASClient:
         vol_changes: list[float],
         q: float | None = None,
     ) -> ScenarioResponse:
-        """Compute a 2D spot × volatility price matrix (operationId ``compute.scenario``)."""
+        """Compute a 2D spot × volatility price matrix (operationId ``compute.scenario``).
+
+        Each cell of the returned matrix is a structured object — not a bare
+        float — with ``spotChange``, ``volChange``, ``spot``, ``volatility``,
+        ``price``, ``pnl``, and ``pnlPercent``. Useful for stress-test grids
+        across spot and vol shocks at a fixed expiry.
+
+        Args:
+            is_call, S, K, r, sigma, t, q: Pricing inputs at the base of the
+                matrix.
+            spot_changes: Decimal spot-shift list (e.g. ``[-0.10, -0.05, 0,
+                0.05, 0.10]``).
+            vol_changes: Decimal vol-shift list (e.g. ``[-0.05, 0, 0.05]``).
+
+        Returns:
+            :class:`ScenarioResponse` with ``matrix[i][j]`` indexed by
+            ``[spotChange][volChange]``.
+        """
         payload = _drop_none({
             "isCall": is_call, "S": S, "K": K, "r": r, "q": q,
             "sigma": sigma, "t": t,
@@ -276,11 +359,21 @@ class OASClient:
         days_to_expiry: float | None = None,
         vol_min: float | None = None,
         vol_max: float | None = None,
+        model: str | None = None,
+        model_params: dict[str, Any] | None = None,
+        greeks: list[str] | None = None,
     ) -> SensitivityResponse:
         """Generate a 1D sensitivity grid (operationId ``compute.sensitivity``).
 
         ``axis`` ∈ {``"spot"``, ``"time"``, ``"volatility"``} chooses the sweep
         dimension; the matching min/max bounds become required.
+
+        ``model`` defaults to ``"bs"`` (all 17 Black-Scholes Greeks per point).
+        Pass ``model="heston"`` together with ``model_params={"v0", "kappa",
+        "theta", "volOfVol" (or "sigma"), "rho"}`` to swap the per-point
+        ``price`` to the Heston Fourier value and add a ``modelGreeks`` block
+        with derivatives w.r.t. the five Heston parameters. ``greeks`` filters
+        the standard Greeks returned at each point — omit to receive all 17.
         """
         payload = _drop_none({
             "isCall": is_call, "S": S, "K": K, "r": r, "q": q,
@@ -289,6 +382,9 @@ class OASClient:
             "spotMin": spot_min, "spotMax": spot_max,
             "daysToExpiry": days_to_expiry,
             "volMin": vol_min, "volMax": vol_max,
+            "model": model,
+            "modelParams": model_params,
+            "greeks": greeks,
         })
         body = self._transport.request("POST", "/v1/compute/sensitivity", json=payload)
         return SensitivityResponse.model_validate(body)
@@ -428,8 +524,29 @@ class OASClient:
         ``modelParams=params`` for durable reuse — the 30-second-only
         ``calibrationId`` is intentionally not surfaced.
 
-        ``model`` ∈ {``"heston"``, ``"sabr"``, ``"vg"``, ``"jd"``, ``"localvol"``}.
-        ``broker`` supplies BYOK headers — required for every calibration call.
+        Args:
+            symbol: Underlying ticker (e.g. ``"SPY"``).
+            model: One of ``"heston"``, ``"sabr"``, ``"vg"``, ``"jd"``, ``"localvol"``.
+            broker: BYOK credentials. The platform never persists broker tokens —
+                they live only on the inbound request.
+            expiration: Optional ``YYYY-MM-DD`` expiration. Omit to let the
+                server pick the nearest monthly.
+            model_params: Optional model-specific calibration knobs (e.g.
+                ``{"accuracyMode": "balanced"}`` for Heston).
+
+        Returns:
+            A :class:`Calibration` already bound to this client. For Heston
+            calibrations the ``Calibration`` also carries ``fit_diagnostics``
+            (per-moneyness-bucket residual RMSE + worst-fitting option) when
+            the server emits it; for other models that field is ``None``.
+
+        Raises:
+            ValueError: ``symbol`` or ``model`` is empty.
+            AuthenticationError / PermissionDeniedError: API key or scope
+                problem.
+            CalibrationQuotaError: tier-level calibration budget exhausted —
+                inspect ``e.resets_at`` for retry timing.
+            ValidationError: malformed inputs (bad model name, bad expiration).
         """
         if not symbol:
             raise ValueError("symbol is required")
@@ -449,6 +566,7 @@ class OASClient:
             params=resp.get("params", {}),
             expiration=resp.get("expiration") or expiration,
             fit_error=resp.get("fitError"),
+            fit_diagnostics=resp.get("fitDiagnostics"),
             calibration_time_ms=resp.get("calibrationTimeMs"),
             provider=resp.get("provider"),
             client=self,

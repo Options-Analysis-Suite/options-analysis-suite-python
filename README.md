@@ -1,5 +1,9 @@
 # Options Analysis Suite — Python SDK
 
+[![PyPI version](https://img.shields.io/pypi/v/options-analysis-suite.svg)](https://pypi.org/project/options-analysis-suite/)
+[![Python versions](https://img.shields.io/pypi/pyversions/options-analysis-suite.svg)](https://pypi.org/project/options-analysis-suite/)
+[![License: MIT](https://img.shields.io/pypi/l/options-analysis-suite.svg)](https://opensource.org/licenses/MIT)
+
 Type-safe Python client for the [Options Analysis Suite API](https://optionsanalysissuite.com).
 
 > **Status: alpha** — full coverage of every typed `/v1/*`
@@ -45,6 +49,43 @@ with OASClient(api_key="oas_live_...") as client:
     # Stream batched metrics without manually paging.
     for m in client.iter_metrics(["SPY", "QQQ", "IWM", "DIA"], batch_size=50):
         print(m.symbol, m.ivRank)
+```
+
+## Monte Carlo distributions
+
+When `model="mc"`, pass `detail="distribution"` to receive the full
+terminal-price distribution (percentiles + histogram) alongside the scalar
+price, or `detail="full"` to additionally receive the (subsampled) raw
+paths. `detail="summary"` is the default and matches the byte-identical
+shape any older caller already sees, plus an `mcStats` block (stdError +
+95% CI + effective path count).
+
+```python
+res = client.price(
+    model="mc", detail="distribution",
+    is_call=True, S=650, K=650, r=0.05, q=0.012, sigma=0.15, t=0.25,
+)
+print(res.price, res.mcStats.stdError)
+print(res.distribution.percentiles.p50, res.distribution.percentiles.p95)
+```
+
+## Sensitivity sweeps under Heston
+
+`client.sensitivity(...)` returns the full 17-Greek set per point under
+Black-Scholes by default. Pass `model="heston"` together with the fitted
+Heston parameters (typically from a recent `client.calibrate(...)` call)
+to swap the per-point `price` to the Heston Fourier value and add a
+`modelGreeks` block with derivatives w.r.t. the five Heston parameters.
+
+```python
+cal = client.calibrate("SPY", model="heston",
+                       broker=TradierCredentials(token="..."))
+sweep = client.sensitivity(
+    is_call=True, S=650, K=650, r=0.05, sigma=0.15, t=0.25,
+    axis="spot", model="heston", model_params=cal.params,
+)
+for row in sweep.data:
+    print(row.x, row.delta, row.modelGreeks.dV0, row.modelGreeks.dRho)
 ```
 
 ## Calibration round-trip

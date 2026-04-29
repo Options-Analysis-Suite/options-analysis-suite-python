@@ -12,6 +12,45 @@ will be called out in this file with **Breaking** at the start of the bullet.
 
 ## [Unreleased]
 
+## [0.1.0a5] — 2026-04-29
+
+Monte Carlo distribution + sensitivity sweep + calibration diagnostics.
+Tracks the matching API release. No breaking changes to existing call
+sites.
+
+### Added
+
+- `client.price(detail="distribution" | "full", histogram_bins=...)` for
+  Monte Carlo (`model="mc"`). Default `detail="summary"` adds an
+  `mcStats` block (stdError, 95% CI, effective path count) — non-MC
+  responses are byte-identical to prior releases.
+- `client.price()` MC response now exposes `distribution` (mean / min /
+  max, 9 percentiles, equal-width histogram of the simulated terminal
+  underlying price) and, when `detail="full"`, `fullPaths` (subsampled
+  raw paths) plus `fullPathsTruncated` flag.
+- `client.sensitivity()` now returns the full 17-Greek set per point
+  (was 5). New `model="heston"` plus `model_params={...}` swaps the
+  per-point `price` to the Heston Fourier value and adds a
+  `modelGreeks` block (dV0, dKappa, dTheta, dVolOfVol, dRho).
+  Per-point `x` field replaces axis-specific keys (`spot` / `days` /
+  `volatility`) for a uniform `{ x, ...greeks }` shape.
+- `Calibration.fit_diagnostics`: per-moneyness-bucket residual RMSE
+  (atm / otm_call / otm_put / deep_otm), per-bucket count, capped
+  residual list, and worst-fitting option. Currently emitted by the
+  API for `model="heston"` only; round-trips through `Calibration.save`
+  / `from_json`.
+- Beefed-up docstrings (Args / Returns / Raises) on the high-leverage
+  compute methods (`price`, `greeks`, `exposure`, `scenario`,
+  `sensitivity`, `calibrate`).
+
+### Changed
+
+- `mcStats.nPaths` reports the *effective* path count, which is up to
+  2× requested when antithetic variates are enabled. Aligns with the
+  count `distribution.count` is built from.
+- `exposure()` docstring now reflects the actual strike-row schema
+  (`strike_cents`, `stk_px_cents`, `c_oi`, `p_oi`, `gamma`).
+
 ## [0.1.0a4] — 2026-04-29
 
 README polish only. No code changes; runtime surface byte-identical to
@@ -111,7 +150,8 @@ checked against the deployed OpenAPI spec.
   upstream.
 - Sync-only client. `AsyncOASClient` deferred until there's a user need.
 
-[Unreleased]: https://github.com/Options-Analysis-Suite/options-analysis-suite-python/compare/v0.1.0a4...HEAD
+[Unreleased]: https://github.com/Options-Analysis-Suite/options-analysis-suite-python/compare/v0.1.0a5...HEAD
+[0.1.0a5]: https://github.com/Options-Analysis-Suite/options-analysis-suite-python/releases/tag/v0.1.0a5
 [0.1.0a4]: https://github.com/Options-Analysis-Suite/options-analysis-suite-python/releases/tag/v0.1.0a4
 [0.1.0a3]: https://github.com/Options-Analysis-Suite/options-analysis-suite-python/releases/tag/v0.1.0a3
 [0.1.0a2]: https://github.com/Options-Analysis-Suite/options-analysis-suite-python/releases/tag/v0.1.0a2

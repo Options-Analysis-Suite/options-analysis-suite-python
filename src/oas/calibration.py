@@ -55,6 +55,7 @@ class Calibration:
         params: dict[str, Any],
         expiration: str | None = None,
         fit_error: dict[str, Any] | None = None,
+        fit_diagnostics: dict[str, Any] | None = None,
         calibration_time_ms: float | None = None,
         provider: str | None = None,
         client: OASClient | None = None,
@@ -70,6 +71,9 @@ class Calibration:
         self.params = params
         self.expiration = expiration
         self.fit_error = fit_error
+        # Per-moneyness-bucket residual diagnostics. Currently emitted by the
+        # API for `model="heston"`; None for other models.
+        self.fit_diagnostics = fit_diagnostics
         self.calibration_time_ms = calibration_time_ms
         self.provider = provider
         # Bound client lets cal.price() / cal.greeks() work without re-passing it.
@@ -208,7 +212,7 @@ class Calibration:
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to a plain dict suitable for JSON. Excludes the bound client."""
-        return {
+        out: dict[str, Any] = {
             "_format_version": _FILE_FORMAT_VERSION,
             "model": self.model,
             "symbol": self.symbol,
@@ -218,6 +222,9 @@ class Calibration:
             "calibrationTimeMs": self.calibration_time_ms,
             "provider": self.provider,
         }
+        if self.fit_diagnostics is not None:
+            out["fitDiagnostics"] = self.fit_diagnostics
+        return out
 
     def save(self, path: str | Path) -> None:
         """Write the calibration to a JSON file on disk."""
@@ -243,6 +250,7 @@ class Calibration:
             params=data["params"],
             expiration=data.get("expiration"),
             fit_error=data.get("fitError"),
+            fit_diagnostics=data.get("fitDiagnostics"),
             calibration_time_ms=data.get("calibrationTimeMs"),
             provider=data.get("provider"),
             client=client,
