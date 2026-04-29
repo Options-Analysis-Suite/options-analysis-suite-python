@@ -137,6 +137,21 @@ covers every typed operation. The `live` test suite double-checks that
 the pinned `tests/fixtures/openapi.snapshot.json` still matches deployed
 prod.
 
+## Updating the SDK when the spec changes
+
+When the upstream OpenAPI spec changes, the SDK reacts as follows:
+
+| Spec change | SDK reaction | Maintainer action |
+|---|---|---|
+| **New field** on existing schema (e.g., add `vegaWeighted` to `MetricsResponse`) | Old SDK versions silently ignore the unknown field via `extra='ignore'` — users on `0.1.x` don't break. | `make gen` to expose the new field on the response model. Bump version, update CHANGELOG, release. |
+| **New endpoint** (new operationId) | `tests/test_drift.py` fails the strict-gate assertion, naming the missing operationId. | Add a method to `src/oas/client.py`, add an entry to `src/oas/_manifest.py`, run `make test` until drift passes, release. |
+| **Removed / renamed endpoint** | Drift gate fails the other way — the SDK manifest references an operationId that no longer exists. | Remove the corresponding `client.py` method and `_manifest.py` entry. Bump major if the SDK had shipped that method publicly. |
+| **Schema field type change** (e.g., `atmIv: number → string`) | `make gen` regenerates with the new type; `mypy --strict` flags any callers that assumed the old type. | Fix call sites, regen, release. |
+| **Spec fixture stale** | `make test-live` fetches the deployed `/openapi.json` and compares against `tests/fixtures/openapi.snapshot.json`. | Refresh the fixture: `curl -s https://data.optionsanalysissuite.com/openapi.json > tests/fixtures/openapi.snapshot.json` and commit. |
+
+The drift gate is the forcing function — you cannot accidentally ship an
+SDK that's out of sync with the deployed API surface.
+
 ## Release process (maintainers)
 
 Releases are tag-driven via the `publish.yml` GitHub Actions workflow.
