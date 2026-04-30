@@ -91,13 +91,19 @@ stray tag push can't ship to PyPI without a human in the loop.
 **Per-release:**
 
 1. Bump `version` in `pyproject.toml` to the new version
-   (e.g. `0.1.0a2` → `0.1.0`).
-2. Update `CHANGELOG.md` under the new version heading; move
+   (e.g. `0.1.0a2` → `0.1.0`). This is the single source of truth —
+   `oas.__version__` and the `User-Agent` header both derive from
+   it via `importlib.metadata` at import time.
+2. Refresh the editable install in your dev env: `uv pip install -e .`
+   (or `pip install -e .`). Editable installs cache dist-info, so
+   without this step `make test` and any local sanity checks will
+   still report the **previous** version.
+3. Update `CHANGELOG.md` under the new version heading; move
    `[Unreleased]` items into it.
-3. Commit (`chore: release vX.Y.Z`).
-4. Tag the commit: `git tag vX.Y.Z` (the `v` prefix is required — the
+4. Commit (`chore: release vX.Y.Z`).
+5. Tag the commit: `git tag vX.Y.Z` (the `v` prefix is required — the
    publish workflow only triggers on tags matching `v*`).
-5. Push the tag: `git push origin vX.Y.Z`.
+6. Push the tag: `git push origin vX.Y.Z`.
 
 The workflow:
 - Verifies the tag's version matches `pyproject.toml`
