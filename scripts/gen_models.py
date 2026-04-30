@@ -45,11 +45,18 @@ def _resolve_codegen_bin() -> str:
     the venv's python symlink back to the base interpreter (e.g.
     `/usr/bin/python3.12`) and computes a `bin/` outside the venv, missing
     the venv-installed `datamodel-codegen`. Using the unresolved parent
-    keeps us in `.venv/bin/`.
+    keeps us in `.venv/bin/` (POSIX) or `.venv\\Scripts\\` (Windows).
+
+    We use `shutil.which(..., path=...)` against the interpreter's bin
+    directory rather than constructing the path manually so PATHEXT
+    handling works on Windows (where the entry point is
+    `datamodel-codegen.exe`) and the executable-bit check stays correct
+    on POSIX.
     """
-    candidate = Path(sys.executable).parent / "datamodel-codegen"
-    if candidate.is_file() and os.access(candidate, os.X_OK):
-        return str(candidate)
+    exe_dir = Path(sys.executable).parent
+    colocated = shutil.which("datamodel-codegen", path=str(exe_dir))
+    if colocated:
+        return colocated
     on_path = shutil.which("datamodel-codegen")
     return on_path if on_path else "datamodel-codegen"
 
