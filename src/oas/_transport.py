@@ -9,6 +9,7 @@ Responsibilities:
 
 from __future__ import annotations
 
+from importlib.metadata import PackageNotFoundError, version as _pkg_version
 from typing import Any
 
 import httpx
@@ -25,7 +26,15 @@ from oas.errors import (
     ValidationError,
 )
 
-_USER_AGENT = "options-analysis-suite-py/0.1.0a1"
+
+def _resolve_version() -> str:
+    try:
+        return _pkg_version("options-analysis-suite")
+    except PackageNotFoundError:
+        return "0.0.0+unknown"
+
+
+_USER_AGENT = f"options-analysis-suite-py/{_resolve_version()}"
 
 
 class Transport:

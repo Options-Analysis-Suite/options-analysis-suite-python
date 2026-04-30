@@ -9,6 +9,8 @@ Public surface::
         snap = client.snapshot("SPY")
 """
 
+from importlib.metadata import PackageNotFoundError, version as _pkg_version
+
 from oas.calibration import Calibration
 from oas.client import OASClient
 from oas.credentials import (
@@ -28,7 +30,10 @@ from oas.errors import (
     ValidationError,
 )
 
-__version__ = "0.1.0a5"
+try:
+    __version__ = _pkg_version("options-analysis-suite")
+except PackageNotFoundError:
+    __version__ = "0.0.0+unknown"
 
 __all__ = [
     "OASClient",
