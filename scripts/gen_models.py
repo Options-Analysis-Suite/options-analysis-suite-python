@@ -37,20 +37,39 @@ def fetch_spec(url: str) -> bytes:
         return r.read()
 
 
+def _resolve_codegen_bin() -> str:
+    """Locate the `datamodel-codegen` binary, preferring the one colocated
+    with the running interpreter so `make gen` works in unactivated shells.
+
+    We deliberately do NOT `Path(sys.executable).resolve()` — that follows
+    the venv's python symlink back to the base interpreter (e.g.
+    `/usr/bin/python3.12`) and computes a `bin/` outside the venv, missing
+    the venv-installed `datamodel-codegen`. Using the unresolved parent
+    keeps us in `.venv/bin/`.
+    """
+    candidate = Path(sys.executable).parent / "datamodel-codegen"
+    if candidate.is_file() and os.access(candidate, os.X_OK):
+        return str(candidate)
+    on_path = shutil.which("datamodel-codegen")
+    return on_path if on_path else "datamodel-codegen"
+
+
 def run_codegen(input_path: Path, output_path: Path) -> None:
     """Invoke datamodel-codegen against a local OpenAPI JSON file."""
+    codegen_bin = _resolve_codegen_bin()
+    if shutil.which(codegen_bin) is None:
+        print("error: datamodel-codegen is not available on PATH or in the "
+              "active interpreter's bin directory. Run `make install` or "
+              "`pip install datamodel-code-generator`.", file=sys.stderr)
+        sys.exit(2)
     cmd = [
-        "datamodel-codegen",
+        codegen_bin,
         "--input", str(input_path),
         "--input-file-type", "openapi",
         "--output", str(output_path),
         "--output-model-type", "pydantic_v2.BaseModel",
         "--target-python-version", "3.10",
     ]
-    if shutil.which("datamodel-codegen") is None:
-        print("error: datamodel-codegen is not on PATH. Run `make install` or "
-              "`pip install datamodel-code-generator`.", file=sys.stderr)
-        sys.exit(2)
     subprocess.run(cmd, check=True)
 
 
