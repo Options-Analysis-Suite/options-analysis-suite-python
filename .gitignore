@@ -16,6 +16,10 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 
+# uv lockfile — this is a PyPI library, not an application;
+# version constraints live in pyproject.toml.
+uv.lock
+
 # IDE
 .vscode/
 .idea/
