@@ -172,14 +172,19 @@ class OASClient:
         ``histogram_bins`` controls the bin count for ``detail="distribution"``
         and ``detail="full"``; clamped to ``[2, 200]``, default 50.
 
-        ``detail="full"`` can produce very large responses. To prevent
-        accidental memory pressure, callers must explicitly set
-        ``allow_full_paths=True`` to request full raw paths.
+        ``detail="full"`` (Monte Carlo only) can produce very large
+        responses. To prevent accidental memory pressure, MC callers must
+        explicitly set ``allow_full_paths=True`` to request full raw
+        paths. ``detail`` is ignored by the API for non-MC models, so the
+        guard is scoped to MC and does not block other models.
         """
-        if detail == "full" and not allow_full_paths:
+        is_mc = isinstance(model, str) and model.strip().lower() in {
+            "mc", "monte_carlo", "montecarlo", "monte-carlo",
+        }
+        if is_mc and detail == "full" and not allow_full_paths:
             raise ValueError(
-                'detail="full" is disabled by default because it can return very large '
-                "responses; pass allow_full_paths=True to opt in."
+                'model="mc" with detail="full" is disabled by default because it can '
+                "return very large responses; pass allow_full_paths=True to opt in."
             )
         payload = _drop_none({
             "model": model, "isCall": is_call, "K": K,
