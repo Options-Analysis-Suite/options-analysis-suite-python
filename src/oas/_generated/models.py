@@ -924,7 +924,7 @@ class ScopeError(BaseModel):
 
 class RateLimitError(BaseModel):
     error: str = Field(..., examples=['Rate limit exceeded'])
-    limit: float = Field(..., examples=[600])
+    limit: float = Field(..., examples=[120])
     retryAfter: float | None = Field(
         None, description='Seconds until rate limit resets', examples=[42]
     )
