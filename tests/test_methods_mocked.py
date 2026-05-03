@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+import pytest
 import respx
 from httpx import Response
 
@@ -171,6 +172,67 @@ def test_greeks_sends_include_insight_as_camelcase() -> None:
         )
 
     assert captured["includeInsight"] is True
+
+
+@respx.mock
+def test_price_blocks_full_detail_for_mc_unless_opted_in() -> None:
+    route = respx.post("https://data.optionsanalysissuite.com/v1/compute/price").mock(
+        return_value=Response(200, json={
+            "price": 1.0, "model": "Monte Carlo",
+            "inputs": {
+                "isCall": True, "S": 100, "K": 100,
+                "r": 0.05, "q": 0, "sigma": 0.2, "t": 0.25,
+            },
+        })
+    )
+
+    with OASClient(api_key="oas_test_xyz") as client:
+        with pytest.raises(ValueError, match='model="mc" with detail="full"'):
+            client.price(
+                model="mc", is_call=True, K=100, S=100,
+                r=0.05, sigma=0.2, t=0.25, detail="full",
+            )
+
+        # Common MC alias variations are treated the same.
+        with pytest.raises(ValueError, match='model="mc" with detail="full"'):
+            client.price(
+                model="Monte_Carlo", is_call=True, K=100, S=100,
+                r=0.05, sigma=0.2, t=0.25, detail="full",
+            )
+
+        # Opt-in lets the request through.
+        client.price(
+            model="mc", is_call=True, K=100, S=100,
+            r=0.05, sigma=0.2, t=0.25, detail="full",
+            allow_full_paths=True,
+        )
+
+    assert route.call_count == 1
+
+
+@respx.mock
+def test_price_full_detail_does_not_block_non_mc_models() -> None:
+    """Regression: detail="full" must not block non-MC models. The API
+    ignores `detail` for non-MC models, so the SDK should not preempt
+    requests that previously succeeded with detail silently dropped."""
+    route = respx.post("https://data.optionsanalysissuite.com/v1/compute/price").mock(
+        return_value=Response(200, json={
+            "price": 1.0, "model": "Black-Scholes",
+            "inputs": {
+                "isCall": True, "S": 100, "K": 100,
+                "r": 0.05, "q": 0, "sigma": 0.2, "t": 0.25,
+            },
+        })
+    )
+
+    with OASClient(api_key="oas_test_xyz") as client:
+        # No allow_full_paths, but model is bs — must NOT raise.
+        client.price(
+            model="bs", is_call=True, K=100, S=100,
+            r=0.05, sigma=0.2, t=0.25, detail="full",
+        )
+
+    assert route.call_count == 1
 
 
 @respx.mock
