@@ -148,6 +148,7 @@ class OASClient:
         broker: BrokerCredentials | None = None,
         detail: str | None = None,
         histogram_bins: int | None = None,
+        allow_full_paths: bool = False,
     ) -> PriceResponse:
         """Price an option (operationId ``compute.price``).
 
@@ -170,7 +171,16 @@ class OASClient:
 
         ``histogram_bins`` controls the bin count for ``detail="distribution"``
         and ``detail="full"``; clamped to ``[2, 200]``, default 50.
+
+        ``detail="full"`` can produce very large responses. To prevent
+        accidental memory pressure, callers must explicitly set
+        ``allow_full_paths=True`` to request full raw paths.
         """
+        if detail == "full" and not allow_full_paths:
+            raise ValueError(
+                'detail="full" is disabled by default because it can return very large '
+                "responses; pass allow_full_paths=True to opt in."
+            )
         payload = _drop_none({
             "model": model, "isCall": is_call, "K": K,
             "S": S, "r": r, "q": q, "sigma": sigma, "t": t,

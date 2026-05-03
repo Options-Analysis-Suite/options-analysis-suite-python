@@ -174,6 +174,31 @@ def test_greeks_sends_include_insight_as_camelcase() -> None:
 
 
 @respx.mock
+def test_price_blocks_full_detail_unless_opted_in() -> None:
+    route = respx.post("https://data.optionsanalysissuite.com/v1/compute/price").mock(
+        return_value=Response(200, json={"price": 1.0, "model": "Monte Carlo", "inputs": {}})
+    )
+
+    with OASClient(api_key="oas_test_xyz") as client:
+        with pytest.raises(ValueError, match='detail="full" is disabled by default'):
+            client.price(model="mc", is_call=True, K=100, S=100, r=0.05, sigma=0.2, t=0.25, detail="full")
+
+        client.price(
+            model="mc",
+            is_call=True,
+            K=100,
+            S=100,
+            r=0.05,
+            sigma=0.2,
+            t=0.25,
+            detail="full",
+            allow_full_paths=True,
+        )
+
+    assert route.call_count == 1
+
+
+@respx.mock
 def test_calendar_renames_from_date_to_from() -> None:
     """from_date is a Python-side rename to avoid the `from` keyword conflict."""
     route = respx.get("https://data.optionsanalysissuite.com/v1/data/economic-calendar").mock(
