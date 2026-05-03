@@ -12,6 +12,21 @@ will be called out in this file with **Breaking** at the start of the bullet.
 
 ## [Unreleased]
 
+## [0.1.0a6] — 2026-05-03
+
+Security hardening for Monte Carlo full-paths responses.
+
+### Changed
+
+- **Security:** `client.price(model="mc", detail="full", ...)` now raises
+  `ValueError` unless the caller explicitly opts in with
+  `allow_full_paths=True`. The `detail="full"` MC response can include
+  very large `fullPaths` arrays that are eagerly decoded by the SDK,
+  posing a client-side memory-exhaustion risk for callers who request
+  it accidentally. The opt-in is scoped to MC only — non-MC models that
+  pass `detail="full"` (the API silently ignores it for those) continue
+  to work without change.
+
 ## [0.1.0a5] — 2026-04-29
 
 Monte Carlo distribution + sensitivity sweep + calibration diagnostics.
