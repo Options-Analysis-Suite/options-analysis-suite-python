@@ -80,6 +80,32 @@ def test_exposure_full_returns_oneof_full_result() -> None:
     assert result.root.snapshot.spotPrice == 650.0
 
 
+
+
+@respx.mock
+def test_exposure_full_allows_missing_abs_gamma_for_backward_compat() -> None:
+    """Older snapshots without absGamma should still deserialize."""
+    fixture = {
+        "snapshot": {
+            "spotPrice": 650.0,
+            "netGamma": 1000, "netDelta": -500, "netVega": 100,
+            "netVanna": 10, "netCharm": -5, "netVomma": 8,
+            "callWall": 660, "putWall": 640, "gammaFlip": 655,
+            "gammaConcentration": 0.3, "regime": "positive",
+            "topStrikes": [],
+        },
+        "byStrike": [],
+    }
+    respx.post("https://data.optionsanalysissuite.com/v1/compute/exposure").mock(
+        return_value=Response(200, json=fixture)
+    )
+
+    with OASClient(api_key="oas_test_xyz") as client:
+        result = client.exposure(strikes=[], spot_price=650.0)
+
+    assert result.root.snapshot.absGamma is None
+
+
 @respx.mock
 def test_scenario_matrix_returns_typed_cells() -> None:
     """Scenario matrix cells are structured objects, not bare floats."""
