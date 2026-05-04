@@ -494,7 +494,7 @@ class ExposureSnapshot(BaseModel):
     putWall: float | None
     gammaFlip: float | None
     absGamma: float | None = Field(
-        ...,
+        None,
         description='Strike with the largest absolute net gamma in the wall/flip universe',
     )
     gammaConcentration: float | None
