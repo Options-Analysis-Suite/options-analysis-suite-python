@@ -12,6 +12,19 @@ will be called out in this file with **Breaking** at the start of the bullet.
 
 ## [Unreleased]
 
+## [0.1.0a7] — 2026-05-03
+
+Pick up the new `absGamma` anchor on `ExposureSnapshot`.
+
+### Added
+
+- `ExposureSnapshot.absGamma` (`float | None`) — the strike with the largest
+  absolute net gamma in the wall/flip universe. Mirrors the field the
+  data-api now returns alongside `callWall`, `putWall`, and `gammaFlip`.
+  Existing snapshots without the field continue to deserialize because the
+  SDK relaxes generated models to `extra='ignore'`; deserialized rows from
+  the new server emit will populate it.
+
 ## [0.1.0a6] — 2026-05-03
 
 Security hardening for Monte Carlo full-paths responses.

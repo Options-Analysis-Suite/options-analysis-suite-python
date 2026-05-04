@@ -61,7 +61,7 @@ def test_exposure_full_returns_oneof_full_result() -> None:
             "spotPrice": 650.0,
             "netGamma": 1000, "netDelta": -500, "netVega": 100,
             "netVanna": 10, "netCharm": -5, "netVomma": 8,
-            "callWall": 660, "putWall": 640, "gammaFlip": 655,
+            "callWall": 660, "putWall": 640, "gammaFlip": 655, "absGamma": 660,
             "gammaConcentration": 0.3, "regime": "positive",
             "topStrikes": [],
         },
