@@ -12,6 +12,30 @@ will be called out in this file with **Breaking** at the start of the bullet.
 
 ## [Unreleased]
 
+## [0.1.0a8] — 2026-05-03
+
+### Fixed
+
+- `ExposureSnapshot.absGamma` is now properly optional. The 0.1.0a7 release
+  generated this field with `Field(...)` (required), which raised
+  `ValidationError` against API responses or pinned fixtures that omitted
+  `absGamma`. Defaulting to `None` restores forward-compatible parsing
+  consistent with `callWall`, `putWall`, and `gammaFlip`.
+
+### Changed
+
+- `scripts/gen_models.py` now post-processes regenerated models to default
+  every nullable required field (`name: T | None = Field(...)`) to
+  `Field(None)`. Mirrors the existing `extra='forbid'` → `extra='ignore'`
+  relax pass: the OpenAPI spec stays strict for contract enforcement; the
+  SDK is lenient at parse time. Prevents future `make gen` runs from
+  silently reintroducing the 0.1.0a7 failure mode.
+- `tests/fixtures/openapi.snapshot.json` refreshed from the redeployed
+  data-api whose `/openapi.json` now correctly advertises
+  `https://data.optionsanalysissuite.com` (the deployment honors
+  `X-Forwarded-Proto` from the TLS-terminating proxy instead of the
+  proxied `http://` hop).
+
 ## [0.1.0a7] — 2026-05-03
 
 Pick up the new `absGamma` anchor on `ExposureSnapshot`.

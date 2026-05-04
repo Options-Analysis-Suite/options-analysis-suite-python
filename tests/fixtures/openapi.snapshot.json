@@ -11351,7 +11351,7 @@
   "servers": [
     {
       "description": "Production",
-      "url": "http://data.optionsanalysissuite.com"
+      "url": "https://data.optionsanalysissuite.com"
     },
     {
       "description": "Local development",

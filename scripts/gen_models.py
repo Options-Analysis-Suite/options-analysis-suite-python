@@ -90,6 +90,39 @@ def relax_extra_forbid(output_path: Path) -> int:
     return n
 
 
+# Match a `name: <type containing '| None'> = Field(\n        ...,` block where
+# ``...`` is `datamodel-codegen`'s "required, no default" sentinel. We promote
+# the field to ``= Field(None, …)`` so callers can deserialize older API
+# responses that omit the field. The OpenAPI spec stays strict (the field
+# remains in ``required``); only the SDK's parse-time stance is loosened.
+#
+# Why we need this even though the spec is the source of truth: any field that
+# is structurally nullable (``T | None``) is one server-side hiccup away from
+# being absent entirely (e.g. behind feature flags, or for endpoints that omit
+# the field on legacy paths). Generated SDKs that hard-require these fields
+# turn a soft contract drift into a parse-time crash for every consumer. The
+# 0.1.0a7 release shipped exactly this failure mode for ``ExposureSnapshot
+# .absGamma`` until 0.1.0a8 patched it; this regex makes the patch durable
+# across regenerations.
+_NULLABLE_REQUIRED_FIELD = re.compile(
+    r"(\b\w+:\s*[^\n=]*?\|\s*None[^\n=]*?=\s*Field\(\s*\n\s*)\.\.\.,",
+    re.MULTILINE,
+)
+
+
+def relax_nullable_required_fields(output_path: Path) -> int:
+    """For every ``name: T | None = Field(..., …)`` declaration in the
+    generated module, replace the required-sentinel ``...`` with ``None`` so
+    the field defaults to ``None`` when omitted from a server response. The
+    SDK is intentionally lenient at parse time even where the spec marks the
+    field required."""
+    src = output_path.read_text()
+    new, n = _NULLABLE_REQUIRED_FIELD.subn(r"\1None,", src)
+    if n:
+        output_path.write_text(new)
+    return n
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--url", default=os.environ.get("OAS_OPENAPI_URL", DEFAULT_URL),
@@ -115,8 +148,10 @@ def main() -> int:
             tmp.unlink(missing_ok=True)
 
     relaxed = relax_extra_forbid(OUTPUT)
+    nulled = relax_nullable_required_fields(OUTPUT)
     print(f"Generated {OUTPUT}")
     print(f"Relaxed extra='forbid' → 'ignore' on {relaxed} model classes for forward-compat")
+    print(f"Defaulted nullable Field(...) → Field(None) on {nulled} fields for forward-compat")
     # The OpenAPI spec uses additionalProperties: false on all tightened response
     # schemas (PriceResponse, GreeksResponse, SnapshotResponse, etc.). If
     # datamodel-codegen ever emits zero `extra='forbid'` annotations for those,
