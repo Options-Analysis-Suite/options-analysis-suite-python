@@ -7,12 +7,24 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 While the SDK is in `0.x`, the public surface may change between minor
-releases — pin to a specific `0.0.x` if you need stability. Breaking changes
+releases; pin to a specific `0.0.x` if you need stability. Breaking changes
 will be called out in this file with **Breaking** at the start of the bullet.
 
 ## [Unreleased]
 
-## [0.1.0a8] — 2026-05-03
+## [0.1.0a9] (2026-05-29)
+
+### Added
+
+- `OASClient.exposure_eod(symbol, *, date=None)` for the new
+  `GET /v1/data/exposure/{symbol}` endpoint: symbol-keyed end-of-day dealer
+  positioning - gamma magnet, gamma flip, call wall, put wall, dealer regime,
+  net GEX/DEX, 30d expected move, and the top contributing strikes - precomputed
+  from OAS's own EOD ORATS data (no chain upload required). Pass
+  `date="YYYY-MM-DD"` for a historical session; omit for the latest. Returns the
+  response dict and is registered in the drift manifest.
+
+## [0.1.0a8] (2026-05-03)
 
 ### Fixed
 
@@ -36,20 +48,20 @@ will be called out in this file with **Breaking** at the start of the bullet.
   `X-Forwarded-Proto` from the TLS-terminating proxy instead of the
   proxied `http://` hop).
 
-## [0.1.0a7] — 2026-05-03
+## [0.1.0a7] (2026-05-03)
 
 Pick up the new `absGamma` anchor on `ExposureSnapshot`.
 
 ### Added
 
-- `ExposureSnapshot.absGamma` (`float | None`) — the strike with the largest
+- `ExposureSnapshot.absGamma` (`float | None`): the strike with the largest
   absolute net gamma in the wall/flip universe. Mirrors the field the
   data-api now returns alongside `callWall`, `putWall`, and `gammaFlip`.
   Existing snapshots without the field continue to deserialize because the
   SDK relaxes generated models to `extra='ignore'`; deserialized rows from
   the new server emit will populate it.
 
-## [0.1.0a6] — 2026-05-03
+## [0.1.0a6] (2026-05-03)
 
 Security hardening for Monte Carlo full-paths responses.
 
@@ -60,11 +72,11 @@ Security hardening for Monte Carlo full-paths responses.
   `allow_full_paths=True`. The `detail="full"` MC response can include
   very large `fullPaths` arrays that are eagerly decoded by the SDK,
   posing a client-side memory-exhaustion risk for callers who request
-  it accidentally. The opt-in is scoped to MC only — non-MC models that
+  it accidentally. The opt-in is scoped to MC only; non-MC models that
   pass `detail="full"` (the API silently ignores it for those) continue
   to work without change.
 
-## [0.1.0a5] — 2026-04-29
+## [0.1.0a5] (2026-04-29)
 
 Monte Carlo distribution + sensitivity sweep + calibration diagnostics.
 Tracks the matching API release. No breaking changes to existing call
@@ -74,7 +86,7 @@ sites.
 
 - `client.price(detail="distribution" | "full", histogram_bins=...)` for
   Monte Carlo (`model="mc"`). Default `detail="summary"` adds an
-  `mcStats` block (stdError, 95% CI, effective path count) — non-MC
+  `mcStats` block (stdError, 95% CI, effective path count): non-MC
   responses are byte-identical to prior releases.
 - `client.price()` MC response now exposes `distribution` (mean / min /
   max, 9 percentiles, equal-width histogram of the simulated terminal
@@ -107,7 +119,7 @@ sites.
 
 - `oas.__version__` now matches the package metadata version.
 
-## [0.1.0a4] — 2026-04-29
+## [0.1.0a4] (2026-04-29)
 
 README polish only. No code changes; runtime surface byte-identical to
 0.1.0a3.
@@ -120,7 +132,7 @@ README polish only. No code changes; runtime surface byte-identical to
   release. Status line is now `**Status: alpha**` and stays correct
   release-over-release.
 
-## [0.1.0a3] — 2026-04-29
+## [0.1.0a3] (2026-04-29)
 
 Scenario response schema fix. This release updates the generated models to
 match the live `/v1/compute/scenario` response.
@@ -132,7 +144,7 @@ match the live `/v1/compute/scenario` response.
   `volatility`, `price`, `pnl`, and `pnlPercent`, not bare floats.
 - Added mocked and live regression coverage for the scenario matrix shape.
 
-## [0.1.0a2] — 2026-04-29
+## [0.1.0a2] (2026-04-29)
 
 Documentation and packaging cleanup. No code changes; the `oas` runtime
 surface is byte-identical to `0.1.0a1`.
@@ -147,7 +159,7 @@ surface is byte-identical to `0.1.0a1`.
   (both pointed at a private GitHub repo and 404'd for PyPI visitors).
   Added `Pricing` and `SDK Reference` URLs that point at public pages.
 
-## [0.1.0a1] — 2026-04-28
+## [0.1.0a1] (2026-04-28)
 
 First public alpha. Architecture decided, full surface implemented, drift
 checked against the deployed OpenAPI spec.
@@ -174,7 +186,7 @@ checked against the deployed OpenAPI spec.
   - Symbol forwarding to `/price` / `/greeks` is suppressed only when the
     caller supplies full numeric inputs **including** numeric `t`, so
     compute-only API keys don't trip the server's data-scope check.
-- `iter_metrics(symbols, batch_size=50)` — chunks a large symbol list across
+- `iter_metrics(symbols, batch_size=50)`: chunks a large symbol list across
   `/v1/data/metrics/batch` calls.
 - Typed exceptions: `OASError`, `AuthenticationError`, `ValidationError`,
   `PermissionDeniedError` (with `.required_scope`), `NotFoundError`,

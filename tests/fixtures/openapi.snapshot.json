@@ -160,6 +160,228 @@
         ],
         "type": "object"
       },
+      "EodExposureResponse": {
+        "additionalProperties": false,
+        "description": "Compact end-of-day dealer-positioning levels for one symbol, computed over a single 0-60 DTE universe so every field agrees: gamma magnet, gamma flip, call/put walls, dealer regime, net GEX/DEX, 30-day expected move, and the top strikes by gamma contribution. The window, units, and schemaVersion travel with every row. Returns 404 when no usable EOD option data exists for the symbol/date (e.g. thinly-traded names or futures symbols, which are not covered).",
+        "properties": {
+          "asOf": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the pipeline computed this row."
+          },
+          "callWall": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Largest call-side gamma concentration (resistance)."
+          },
+          "date": {
+            "description": "EOD session the levels are computed from.",
+            "format": "date",
+            "type": "string"
+          },
+          "dealerRegime": {
+            "description": "Sign of net gamma at spot over the window.",
+            "enum": [
+              "positive",
+              "negative",
+              "neutral"
+            ],
+            "type": "string"
+          },
+          "dteWindow": {
+            "additionalProperties": false,
+            "description": "Expiration window every level is computed over.",
+            "properties": {
+              "maxDte": {
+                "type": "number"
+              },
+              "minDte": {
+                "type": "number"
+              },
+              "unit": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "minDte",
+              "maxDte",
+              "unit"
+            ],
+            "type": "object"
+          },
+          "expectedMove30d": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "30-day expected move in dollars (spotPrice * expectedMovePct30d)."
+          },
+          "expectedMovePct30d": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "30-day ATM-implied move as a decimal fraction."
+          },
+          "gammaFlip": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Net-gamma zero crossing (repriced)."
+          },
+          "gammaMagnet": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Strike with the largest absolute net gamma in the window."
+          },
+          "netDex": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Net dollar delta exposure over the window (see units)."
+          },
+          "netGex": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Net dollar gamma exposure over the window (see units)."
+          },
+          "putWall": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Largest put-side gamma concentration (support)."
+          },
+          "schemaVersion": {
+            "description": "Contract version; bumped on any breaking shape change.",
+            "enum": [
+              1
+            ],
+            "type": "integer"
+          },
+          "source": {
+            "description": "Provenance tag, e.g. \"eod_orats_snapshot\".",
+            "type": "string"
+          },
+          "spotPrice": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "topContributingStrikes": {
+            "description": "Strikes contributing most to net gamma, ordered by absolute gamma contribution.",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "netDex": {
+                  "type": "number"
+                },
+                "netGex": {
+                  "type": "number"
+                },
+                "strike": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "strike",
+                "netGex",
+                "netDex"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "topContributingStrikesLimit": {
+            "description": "Max number of rows returned in topContributingStrikes.",
+            "type": "integer"
+          },
+          "units": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Plain-language units for the exposure and expected-move fields.",
+            "type": "object"
+          }
+        },
+        "required": [
+          "schemaVersion",
+          "symbol",
+          "date",
+          "asOf",
+          "source",
+          "dteWindow",
+          "spotPrice",
+          "netGex",
+          "netDex",
+          "gammaMagnet",
+          "gammaFlip",
+          "callWall",
+          "putWall",
+          "dealerRegime",
+          "expectedMovePct30d",
+          "expectedMove30d",
+          "topContributingStrikes",
+          "topContributingStrikesLimit",
+          "units"
+        ],
+        "type": "object"
+      },
       "ExoticInsight": {
         "properties": {
           "accentColor": {
@@ -7215,6 +7437,187 @@
           }
         },
         "summary": "Economic events calendar",
+        "tags": [
+          "Data"
+        ]
+      }
+    },
+    "/v1/data/exposure/{symbol}": {
+      "get": {
+        "description": "Compact end-of-day exposure levels computed over a single 0-60 DTE universe: gamma magnet, gamma flip, call/put walls, dealer regime, net GEX/DEX, 30-day expected move, and top contributing strikes. One cached row per (symbol, date); pass ?date=YYYY-MM-DD for a historical session (defaults to the latest close). 404 when no usable EOD option data exists for the symbol/date.",
+        "operationId": "data.exposure.bySymbol",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "symbol",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "date",
+            "required": false,
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "example": {
+                    "summary": "EOD dealer-positioning levels for TSLA (0-60 DTE)",
+                    "value": {
+                      "asOf": "2026-05-28T21:30:00Z",
+                      "callWall": 260,
+                      "date": "2026-05-28",
+                      "dealerRegime": "positive",
+                      "dteWindow": {
+                        "maxDte": 60,
+                        "minDte": 0,
+                        "unit": "calendar_days"
+                      },
+                      "expectedMove30d": 11.13,
+                      "expectedMovePct30d": 0.045,
+                      "gammaFlip": 242,
+                      "gammaMagnet": 250,
+                      "netDex": -342900000,
+                      "netGex": 1284500000,
+                      "putWall": 235,
+                      "schemaVersion": 1,
+                      "source": "eod_orats_snapshot",
+                      "spotPrice": 247.35,
+                      "symbol": "TSLA",
+                      "topContributingStrikes": [
+                        {
+                          "netDex": 18400000,
+                          "netGex": 421300000,
+                          "strike": 250
+                        },
+                        {
+                          "netDex": -9100000,
+                          "netGex": 268900000,
+                          "strike": 260
+                        },
+                        {
+                          "netDex": -22800000,
+                          "netGex": -204700000,
+                          "strike": 235
+                        }
+                      ],
+                      "topContributingStrikesLimit": 10,
+                      "units": {
+                        "expectedMovePct30d": "decimal fraction",
+                        "netDex": "dealer-perspective dollar delta exposure",
+                        "netGex": "dealer-perspective dollar delta change for a 1% spot move"
+                      }
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/EodExposureResponse"
+                }
+              }
+            },
+            "description": "EOD exposure levels"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationError"
+                }
+              }
+            },
+            "description": "Bad request \u2014 validation failed or invalid parameters"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "API key missing or invalid"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScopeError"
+                }
+              }
+            },
+            "description": "API key lacks the required scope for this endpoint"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            },
+            "description": "No exposure data found"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RateLimitError"
+                }
+              }
+            },
+            "description": "Rate limit exceeded. X-RateLimit-* headers indicate current limits.",
+            "headers": {
+              "X-RateLimit-Limit": {
+                "description": "Maximum requests per minute",
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "X-RateLimit-Remaining": {
+                "description": "Requests remaining in current window",
+                "schema": {
+                  "type": "integer"
+                }
+              },
+              "X-RateLimit-Reset": {
+                "description": "Unix timestamp when the rate limit resets",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            },
+            "description": "Internal server error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceUnavailableError"
+                }
+              }
+            },
+            "description": "Service unavailable \u2014 worker pool draining or broker connection failed"
+          }
+        },
+        "summary": "End-of-day dealer-positioning levels for a symbol",
         "tags": [
           "Data"
         ]

@@ -54,6 +54,7 @@ ENDPOINTS: dict[str, Endpoint] = {
     # Data — analytics
     "data.marketTrends":   Endpoint("GET", "/v1/data/market-trends", "market_trends"),
     "data.ivSurface":      Endpoint("GET", "/v1/data/iv-surface/{symbol}", "iv_surface"),
+    "data.exposure.bySymbol": Endpoint("GET", "/v1/data/exposure/{symbol}", "exposure_eod"),
     "data.greeksHistory":  Endpoint("GET", "/v1/data/greeks-history/{symbol}", "greeks_history"),
     "data.scanner.ranked": Endpoint("GET", "/v1/data/scanner/ranked", "scanner_ranked"),
 

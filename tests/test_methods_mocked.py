@@ -321,6 +321,57 @@ def test_news_preserves_pagination_metadata() -> None:
 
 
 @respx.mock
+def test_exposure_eod_returns_levels_and_forwards_date() -> None:
+    captured: dict[str, Any] = {}
+
+    def _handler(request):
+        captured["date"] = request.url.params.get("date")
+        return Response(200, json={
+            "schemaVersion": 1,
+            "symbol": "TSLA",
+            "date": "2026-05-28",
+            "asOf": "2026-05-28T21:30:00Z",
+            "source": "eod_orats_snapshot",
+            "dteWindow": {"minDte": 0, "maxDte": 60, "unit": "calendar_days"},
+            "spotPrice": 247.35,
+            "netGex": 1284500000,
+            "netDex": -342900000,
+            "gammaMagnet": 250,
+            "gammaFlip": 242,
+            "callWall": 260,
+            "putWall": 235,
+            "dealerRegime": "positive",
+            "expectedMovePct30d": 0.045,
+            "expectedMove30d": 11.13,
+            "topContributingStrikes": [{"strike": 250, "netGex": 421300000, "netDex": 18400000}],
+            "topContributingStrikesLimit": 10,
+            "units": {
+                "netGex": "dealer-perspective dollar delta change for a 1% spot move",
+                "netDex": "dealer-perspective dollar delta exposure",
+                "expectedMovePct30d": "decimal fraction",
+            },
+        })
+
+    respx.get("https://data.optionsanalysissuite.com/v1/data/exposure/TSLA").mock(side_effect=_handler)
+
+    with OASClient(api_key="oas_test_xyz") as client:
+        result = client.exposure_eod("TSLA", date="2026-05-28")
+
+    # date forwarded as a query param; raw dict returned (server metadata preserved)
+    assert captured["date"] == "2026-05-28"
+    assert isinstance(result, dict)
+    assert result["gammaFlip"] == 242
+    assert result["dealerRegime"] == "positive"
+    assert result["dteWindow"]["maxDte"] == 60
+
+
+def test_exposure_eod_requires_symbol() -> None:
+    with OASClient(api_key="oas_test_xyz") as client:
+        with pytest.raises(ValueError):
+            client.exposure_eod("")
+
+
+@respx.mock
 def test_probability_simple_sends_typed_body_no_broker_required() -> None:
     captured: dict[str, Any] = {}
 

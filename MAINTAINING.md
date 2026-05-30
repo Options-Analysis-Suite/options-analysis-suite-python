@@ -43,7 +43,7 @@ pairing. `tests/test_drift.py` runs four checks against the spec:
    Catches both unfinished stubs left in the allowlist and surprise spec
    additions.
 
-The `EXPECTED_MISSING_OPERATION_IDS` allowlist is **empty** — the SDK
+The `EXPECTED_MISSING_OPERATION_IDS` allowlist is **empty**; the SDK
 covers every typed operation. The `live` test suite double-checks that
 the pinned `tests/fixtures/openapi.snapshot.json` still matches deployed
 prod.
@@ -54,20 +54,20 @@ When the upstream OpenAPI spec changes, the SDK reacts as follows:
 
 | Spec change | SDK reaction | Maintainer action |
 |---|---|---|
-| **New field** on existing schema (e.g., add `vegaWeighted` to `MetricsResponse`) | Old SDK versions silently ignore the unknown field via `extra='ignore'` — users on `0.1.x` don't break. | `make gen` to expose the new field on the response model. Bump version, update CHANGELOG, release. |
+| **New field** on existing schema (e.g., add `vegaWeighted` to `MetricsResponse`) | Old SDK versions silently ignore the unknown field via `extra='ignore'`: users on `0.1.x` don't break. | `make gen` to expose the new field on the response model. Bump version, update CHANGELOG, release. |
 | **New endpoint** (new operationId) | `tests/test_drift.py` fails the strict-gate assertion, naming the missing operationId. | Add a method to `src/oas/client.py`, add an entry to `src/oas/_manifest.py`, run `make test` until drift passes, release. |
-| **Removed / renamed endpoint** | Drift gate fails the other way — the SDK manifest references an operationId that no longer exists. | Remove the corresponding `client.py` method and `_manifest.py` entry. Bump major if the SDK had shipped that method publicly. |
+| **Removed / renamed endpoint** | Drift gate fails the other way; the SDK manifest references an operationId that no longer exists. | Remove the corresponding `client.py` method and `_manifest.py` entry. Bump major if the SDK had shipped that method publicly. |
 | **Schema field type change** (e.g., `atmIv: number → string`) | `make gen` regenerates with the new type; `mypy --strict` flags any callers that assumed the old type. | Fix call sites, regen, release. |
 | **Spec fixture stale** | `make test-live` fetches the deployed `/openapi.json` and compares against `tests/fixtures/openapi.snapshot.json`. | Refresh the fixture and commit. |
 
-The drift gate is the forcing function — you cannot accidentally ship an
+The drift gate is the forcing function; you cannot accidentally ship an
 SDK that's out of sync with the deployed API surface.
 
 ## Release process
 
 Releases are tag-driven via the `publish.yml` GitHub Actions workflow.
 The publish job uses [PyPI Trusted Publishing](https://docs.pypi.org/trusted-publishers/)
-(OIDC) — no API tokens are stored anywhere.
+(OIDC): no API tokens are stored anywhere.
 
 **One-time setup (on PyPI):**
 
@@ -91,7 +91,7 @@ stray tag push can't ship to PyPI without a human in the loop.
 **Per-release:**
 
 1. Bump `version` in `pyproject.toml` to the new version
-   (e.g. `0.1.0a2` → `0.1.0`). This is the single source of truth —
+   (e.g. `0.1.0a2` → `0.1.0`). This is the single source of truth;
    `oas.__version__` and the `User-Agent` header both derive from
    it via `importlib.metadata` at import time.
 2. Refresh the editable install in your dev env: `uv pip install -e .`
@@ -101,7 +101,7 @@ stray tag push can't ship to PyPI without a human in the loop.
 3. Update `CHANGELOG.md` under the new version heading; move
    `[Unreleased]` items into it.
 4. Commit (`chore: release vX.Y.Z`).
-5. Tag the commit: `git tag vX.Y.Z` (the `v` prefix is required — the
+5. Tag the commit: `git tag vX.Y.Z` (the `v` prefix is required; the
    publish workflow only triggers on tags matching `v*`).
 6. Push the tag: `git push origin vX.Y.Z`.
 
@@ -119,8 +119,8 @@ If the tag-vs-pyproject guard fails, fix `pyproject.toml`, retag with
 
 The SDK lives in two places:
 
-- `options-analysis-suite/sdk/python/` — canonical dev location (private monorepo)
-- `options-analysis-suite-python/` (root) — release mirror, this repo
+- `options-analysis-suite/sdk/python/`: canonical dev location (private monorepo)
+- `options-analysis-suite-python/` (root): release mirror, this repo
 
 Edit in the monorepo, then before each release rsync to the standalone repo:
 
@@ -131,5 +131,5 @@ rsync -av \
   /path/to/monorepo/sdk/python/ /path/to/options-analysis-suite-python/
 ```
 
-**Don't use `--delete`** — it would wipe the standalone repo's
+**Don't use `--delete`**; it would wipe the standalone repo's
 `.github/workflows/` (those don't exist in the monorepo).

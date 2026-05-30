@@ -1,4 +1,4 @@
-# Options Analysis Suite — Python SDK
+# Options Analysis Suite: Python SDK
 
 [![PyPI version](https://img.shields.io/pypi/v/options-analysis-suite.svg)](https://pypi.org/project/options-analysis-suite/)
 [![Python versions](https://img.shields.io/pypi/pyversions/options-analysis-suite.svg)](https://pypi.org/project/options-analysis-suite/)
@@ -6,7 +6,7 @@
 
 Type-safe Python client for the [Options Analysis Suite API](https://optionsanalysissuite.com).
 
-> **Status: alpha** — full coverage of every typed `/v1/*`
+> **Status: alpha.** Full coverage of every typed `/v1/*`
 > operationId, plus a `Calibration` domain helper. Drift-checked against
 > the deployed OpenAPI spec.
 
@@ -36,7 +36,7 @@ with OASClient(api_key="oas_live_...") as client:
     greeks = client.greeks(model="heston", is_call=True, S=650, K=650, r=0.05,
                            q=0.012, sigma=0.15, t=0.25)
 
-    # Calibrate once, persist, reuse — never re-touches the calibrationId TTL.
+    # Calibrate once, persist, reuse: never re-touches the calibrationId TTL.
     cal = client.calibrate(
         "SPY", model="heston",
         broker=TradierCredentials(token="..."),
@@ -118,7 +118,7 @@ try:
 except NotFoundError as e:
     print(f"warehouse miss: {e}")
 except RateLimitError as e:
-    print(f"slow down — retry in {e.retry_after}s (bucket: {e.bucket})")
+    print(f"slow down, retry in {e.retry_after}s (bucket: {e.bucket})")
 except CalibrationQuotaError as e:
     print(f"calibration quota exhausted; resets at {e.resets_at}")
 ```
@@ -131,10 +131,10 @@ The full hierarchy: `OASError` → `AuthenticationError`, `ValidationError`,
 
 ## Models
 
-Response objects are typed Pydantic v2 models — import them from
+Response objects are typed Pydantic v2 models. Import them from
 `oas._generated.models` for type hints. The classes use `extra='ignore'`
 so additive server fields (e.g., a new metric in `MetricsResponse`) don't
-break older SDK versions — older SDKs will simply omit unknown fields.
+break older SDK versions; older SDKs simply omit unknown fields.
 
 ## License
 

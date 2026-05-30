@@ -715,6 +715,42 @@ class OASClient:
         )
         return IVSurfaceResponse.model_validate(body)
 
+    def exposure_eod(self, symbol: str, *, date: str | None = None) -> dict[str, Any]:
+        """End-of-day dealer-positioning levels for a symbol (operationId
+        ``data.exposure.bySymbol``).
+
+        A compact set of exposure levels computed over a single 0-60 DTE universe
+        (so every field agrees): ``gammaMagnet``, ``gammaFlip``, ``callWall``,
+        ``putWall``, ``dealerRegime``, net GEX/DEX, the 30-day expected move, and
+        the top contributing strikes. One row per (symbol, date) — the symbol-keyed
+        EOD counterpart to :meth:`exposure`, which computes from a caller-supplied
+        live chain.
+
+        Args:
+            symbol: Underlying ticker (e.g. ``"TSLA"``).
+            date: Optional ``YYYY-MM-DD`` session; defaults to the latest close.
+
+        Returns:
+            The exposure payload as a ``dict`` (see the ``EodExposureResponse``
+            schema in the OpenAPI spec). ``gammaMagnet`` / ``gammaFlip`` /
+            ``callWall`` / ``putWall`` may be ``None`` for thinly-traded names;
+            ``netGex`` / ``netDex`` units are spelled out in the ``units`` block.
+
+        Raises:
+            ValueError: empty ``symbol``.
+            NotFoundError: no usable EOD option data for the symbol/date.
+
+        >>> levels = client.exposure_eod("TSLA")
+        >>> levels["gammaFlip"], levels["dealerRegime"]
+        """
+        if not symbol:
+            raise ValueError("symbol is required")
+        params = _drop_none({"date": date})
+        body = self._transport.request(
+            "GET", f"/v1/data/exposure/{_path_param(symbol)}", params=params or None,
+        )
+        return _ensure_dict(body)
+
     def greeks_history(self, symbol: str, *, days: int | None = None) -> dict[str, Any]:
         """Historical Greeks-by-strike (operationId ``data.greeksHistory``)."""
         if not symbol:
