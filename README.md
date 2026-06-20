@@ -6,9 +6,10 @@
 
 Type-safe Python client for the [Options Analysis Suite API](https://optionsanalysissuite.com).
 
-> **Status: alpha.** Full coverage of every typed `/v1/*`
+> **Status: stable (1.0).** Full coverage of every typed `/v1/*`
 > operationId, plus a `Calibration` domain helper. Drift-checked against
-> the deployed OpenAPI spec.
+> the deployed OpenAPI spec. Follows semantic versioning: the public surface
+> will not change incompatibly without a major version bump.
 
 ## Install
 

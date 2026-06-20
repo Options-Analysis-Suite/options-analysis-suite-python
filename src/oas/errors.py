@@ -29,7 +29,7 @@ class AuthenticationError(OASError):
 
 
 class ValidationError(OASError):
-    """400 — request body or query parameters failed input validation.
+    """400/422 — request body, query parameters, or resolved inputs failed validation.
 
     The server typically includes per-field issue details in the response body;
     they aren't surfaced as structured fields here yet. Catch and inspect

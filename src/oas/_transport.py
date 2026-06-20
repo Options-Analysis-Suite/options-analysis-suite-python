@@ -79,7 +79,7 @@ class Transport:
 
         if status == 401:
             raise AuthenticationError(msg, status=status, code=code)
-        if status == 400:
+        if status in (400, 422):
             raise ValidationError(msg, status=status, code=code)
         if status == 403:
             raise PermissionDeniedError(

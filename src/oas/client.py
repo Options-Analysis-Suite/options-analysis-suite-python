@@ -64,6 +64,7 @@ from oas.calibration import Calibration
 from oas.credentials import BrokerCredentials
 
 DEFAULT_BASE_URL = "https://data.optionsanalysissuite.com"
+MAX_METRICS_BATCH_SYMBOLS = 50
 
 
 def _path_param(value: str) -> str:
@@ -381,7 +382,8 @@ class OASClient:
         """Generate a 1D sensitivity grid (operationId ``compute.sensitivity``).
 
         ``axis`` ∈ {``"spot"``, ``"time"``, ``"volatility"``} chooses the sweep
-        dimension; the matching min/max bounds become required.
+        dimension. Matching bounds are optional; the API uses sensible defaults
+        when they are omitted.
 
         ``model`` defaults to ``"bs"`` (all 17 Black-Scholes Greeks per point).
         Pass ``model="heston"`` together with ``model_params={"v0", "kappa",
@@ -531,6 +533,8 @@ class OASClient:
         broker: BrokerCredentials,
         expiration: str | None = None,
         model_params: dict[str, Any] | None = None,
+        risk_free_rate: float | None = None,
+        dividend_yield: float | None = None,
     ) -> Calibration:
         """Calibrate a model against live broker chain data (operationId ``compute.calibrate``).
 
@@ -548,6 +552,10 @@ class OASClient:
                 server pick the nearest monthly.
             model_params: Optional model-specific calibration knobs (e.g.
                 ``{"accuracyMode": "balanced"}`` for Heston).
+            risk_free_rate: Optional risk-free rate assumption used during
+                calibration. Server default is ``0.05`` when omitted.
+            dividend_yield: Optional continuous dividend-yield assumption used
+                during calibration. Server default is ``0`` when omitted.
 
         Returns:
             A :class:`Calibration` already bound to this client. For Heston
@@ -570,6 +578,8 @@ class OASClient:
         payload = _drop_none({
             "model": model, "symbol": symbol,
             "expiration": expiration, "modelParams": model_params,
+            "riskFreeRate": risk_free_rate,
+            "dividendYield": dividend_yield,
         })
         headers = dict(broker.headers())
         resp = self._transport.request(
@@ -648,16 +658,23 @@ class OASClient:
     def metrics_batch(self, symbols: list[str]) -> MetricsBatchResponse:
         """Latest metrics for multiple symbols (operationId ``data.metrics.batch``).
 
-        ``symbols`` is a list of tickers; the SDK joins them with commas for the
-        ``symbols`` query parameter. Use :meth:`iter_metrics` to chunk an
-        arbitrarily large list automatically.
+        ``symbols`` is a list of tickers. The server accepts at most 50 symbols
+        per request; the SDK chunks larger lists automatically and merges the
+        returned rows into one ``MetricsBatchResponse``.
         """
         if not symbols:
             raise ValueError("symbols list is required")
-        body = self._transport.request(
-            "GET", "/v1/data/metrics/batch", params={"symbols": ",".join(symbols)},
-        )
-        return MetricsBatchResponse.model_validate(body)
+        rows: list[Any] = []
+        total = 0
+        for i in range(0, len(symbols), MAX_METRICS_BATCH_SYMBOLS):
+            chunk = symbols[i:i + MAX_METRICS_BATCH_SYMBOLS]
+            body = self._transport.request(
+                "GET", "/v1/data/metrics/batch", params={"symbols": ",".join(chunk)},
+            )
+            parsed = MetricsBatchResponse.model_validate(body)
+            total += int(parsed.count or 0)
+            rows.extend(parsed.data or [])
+        return MetricsBatchResponse.model_validate({"count": total, "data": rows})
 
     def iter_metrics(
         self,
@@ -674,8 +691,9 @@ class OASClient:
         """
         if batch_size <= 0:
             raise ValueError("batch_size must be > 0")
-        for i in range(0, len(symbols), batch_size):
-            chunk = symbols[i:i + batch_size]
+        effective_batch_size = min(batch_size, MAX_METRICS_BATCH_SYMBOLS)
+        for i in range(0, len(symbols), effective_batch_size):
+            chunk = symbols[i:i + effective_batch_size]
             if not chunk:
                 continue
             yield from self.metrics_batch(chunk).data or []

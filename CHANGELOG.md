@@ -6,11 +6,50 @@ in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-While the SDK is in `0.x`, the public surface may change between minor
-releases; pin to a specific `0.0.x` if you need stability. Breaking changes
-will be called out in this file with **Breaking** at the start of the bullet.
+As of `1.0.0` the SDK follows semantic versioning: backward-incompatible
+changes to the public surface require a major version bump, and any removal is
+preceded by a deprecation in a prior minor release. Breaking changes are called
+out in this file with **Breaking** at the start of the bullet.
 
 ## [Unreleased]
+
+## [1.0.0] (2026-06-20)
+
+First stable release. The SDK now follows semantic versioning: the public
+surface (the typed `OASClient` methods and their parameters) will not change
+incompatibly without a major version bump, and any removal will be preceded by
+a deprecation in a prior minor release.
+
+### Breaking
+
+- Binomial pricing now caps `steps` at 2000 (previously 5000), matching the
+  platform default. `price` / `greeks` / `sensitivity` calls with
+  `model="binomial"` and `steps > 2000` are rejected with a 400
+  (`ValidationError`).
+
+### Added
+
+- `calibrate(...)` accepts `risk_free_rate` and `dividend_yield` to pin the
+  rate and continuous-dividend assumptions used during calibration (server
+  defaults remain `0.05` and `0`). These now feed the surface fit itself, not
+  just post-fit pricing.
+
+### Changed
+
+- `metrics_batch(...)` and `iter_metrics(...)` automatically split long symbol
+  lists into requests of at most 50 symbols, so callers no longer hit the
+  server's per-request cap; results are returned in request order.
+- HTTP 422 (semantic validation / ticker-resolution failure) now raises
+  `ValidationError`, consistent with 400. Previously it fell through to a
+  generic error.
+- `sensitivity(...)` axis bounds are optional; the server applies sensible
+  defaults when they are omitted.
+
+### Fixed
+
+- Regenerated models from the hardened OpenAPI spec: the 405 error body exposes
+  `allowedMethods`, and the 429 error union is now an `anyOf` so a
+  `CALIBRATION_QUOTA_EXCEEDED` response body validates correctly.
 
 ## [0.1.0a9] (2026-05-29)
 

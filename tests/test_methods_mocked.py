@@ -21,6 +21,7 @@ import respx
 from httpx import Response
 
 from oas import OASClient
+from oas.errors import ValidationError
 
 
 @respx.mock
@@ -51,6 +52,36 @@ def test_iter_metrics_chunks_symbols_at_batch_size() -> None:
     # 3 + 3 + 1 chunks
     assert calls == ["S0,S1,S2", "S3,S4,S5", "S6"]
     assert {r.symbol for r in results} == set(syms)
+
+
+@respx.mock
+def test_metrics_batch_auto_chunks_above_server_limit() -> None:
+    calls: list[str] = []
+
+    def _handler(request):
+        calls.append(request.url.params["symbols"])
+        symbols = request.url.params["symbols"].split(",")
+        data = [{
+            "symbol": s, "date": "2026-04-25",
+            "atmIv": 0.15, "ivRank": 25.0, "ivPercentile": 30.0,
+            "hv20d": None, "hv60d": None, "putCallRatio": 0.9,
+            "totalVolume": 1000, "totalOi": 5000,
+            "callVolume": 600, "putVolume": 400,
+            "callOi": 3000, "putOi": 2000, "maxPain": 100, "expectedMovePct": 0.02,
+        } for s in symbols]
+        return Response(200, json={"count": len(data), "data": data})
+
+    respx.get("https://data.optionsanalysissuite.com/v1/data/metrics/batch").mock(side_effect=_handler)
+
+    syms = [f"S{i}" for i in range(55)]
+    with OASClient(api_key="oas_test_xyz") as client:
+        result = client.metrics_batch(syms)
+
+    assert result.count == 55
+    assert len(result.data or []) == 55
+    assert len(calls) == 2
+    assert calls[0] == ",".join(syms[:50])
+    assert calls[1] == ",".join(syms[50:])
 
 
 @respx.mock
@@ -174,6 +205,24 @@ def test_price_sends_snake_case_kwargs_as_camelcase_json() -> None:
     assert captured["isAmerican"] is False
     assert "is_call" not in captured
     assert "model_params" not in captured
+
+
+@respx.mock
+def test_semantic_422_maps_to_validation_error() -> None:
+    respx.post("https://data.optionsanalysissuite.com/v1/compute/price").mock(
+        return_value=Response(422, json={
+            "error": "Failed to resolve required market parameters",
+            "code": "RESOLUTION_FAILED",
+            "missingFields": ["S", "sigma"],
+        })
+    )
+
+    with OASClient(api_key="oas_test_xyz") as client:
+        with pytest.raises(ValidationError) as excinfo:
+            client.price(model="bs", is_call=True, K=100, r=0.05, t=0.25)
+
+    assert excinfo.value.status == 422
+    assert excinfo.value.code == "RESOLUTION_FAILED"
 
 
 @respx.mock
@@ -402,6 +451,42 @@ def test_probability_simple_sends_typed_body_no_broker_required() -> None:
     assert captured["strikes"] == [640, 645, 650, 655, 660]
     assert captured["timeToExpiry"] == 0.25
     assert captured["riskFreeRate"] == 0.05
+
+
+@respx.mock
+def test_calibrate_sends_market_assumption_overrides() -> None:
+    from oas import TradierCredentials
+    captured: dict[str, Any] = {}
+
+    def _handler(request):
+        nonlocal captured
+        captured = json.loads(request.content)
+        return Response(200, json={
+            "model": "heston",
+            "symbol": "SPY",
+            "expiration": "2026-06-19",
+            "params": {"v0": 0.04},
+            "fitError": {"ivRmse": 0.02, "nOptions": 20},
+            "calibrationTimeMs": 100,
+            "calibrationId": "cal_123",
+            "provider": "tradier",
+        })
+
+    respx.post("https://data.optionsanalysissuite.com/v1/compute/calibrate").mock(side_effect=_handler)
+
+    with OASClient(api_key="oas_test_xyz") as client:
+        client.calibrate(
+            "SPY",
+            model="heston",
+            broker=TradierCredentials(token="ttok"),
+            risk_free_rate=0.041,
+            dividend_yield=0.012,
+        )
+
+    assert captured["riskFreeRate"] == 0.041
+    assert captured["dividendYield"] == 0.012
+    assert "risk_free_rate" not in captured
+    assert "dividend_yield" not in captured
 
 
 @respx.mock
