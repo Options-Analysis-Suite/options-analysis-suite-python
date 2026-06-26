@@ -85,6 +85,20 @@ def test_metrics_batch_auto_chunks_above_server_limit() -> None:
 
 
 @respx.mock
+def test_metrics_batch_rejects_oversized_symbol_list() -> None:
+    respx.get("https://data.optionsanalysissuite.com/v1/data/metrics/batch").mock(
+        return_value=Response(200, json={"count": 0, "data": []})
+    )
+
+    syms = [f"S{i}" for i in range(501)]
+    with OASClient(api_key="oas_test_xyz") as client:
+        with pytest.raises(ValueError, match="at most 500 symbols"):
+            client.metrics_batch(syms)
+
+    assert len(respx.calls) == 0
+
+
+@respx.mock
 def test_exposure_full_returns_oneof_full_result() -> None:
     """Default exposure response is the {snapshot, byStrike} union member."""
     fixture = {

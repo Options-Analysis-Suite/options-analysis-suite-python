@@ -65,6 +65,7 @@ from oas.credentials import BrokerCredentials
 
 DEFAULT_BASE_URL = "https://data.optionsanalysissuite.com"
 MAX_METRICS_BATCH_SYMBOLS = 50
+MAX_METRICS_BATCH_TOTAL_SYMBOLS = 500
 
 
 def _path_param(value: str) -> str:
@@ -660,10 +661,16 @@ class OASClient:
 
         ``symbols`` is a list of tickers. The server accepts at most 50 symbols
         per request; the SDK chunks larger lists automatically and merges the
-        returned rows into one ``MetricsBatchResponse``.
+        returned rows into one ``MetricsBatchResponse``. To avoid unbounded
+        authenticated request fan-out, one call accepts at most 500 symbols.
         """
         if not symbols:
             raise ValueError("symbols list is required")
+        if len(symbols) > MAX_METRICS_BATCH_TOTAL_SYMBOLS:
+            raise ValueError(
+                "symbols list must contain at most "
+                f"{MAX_METRICS_BATCH_TOTAL_SYMBOLS} symbols"
+            )
         rows: list[Any] = []
         total = 0
         for i in range(0, len(symbols), MAX_METRICS_BATCH_SYMBOLS):
