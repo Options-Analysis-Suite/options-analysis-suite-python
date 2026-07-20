@@ -1,0 +1,28 @@
+# Build artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# Caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# uv lockfile — this is a PyPI library, not an application;
+# version constraints live in pyproject.toml.
+uv.lock
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
