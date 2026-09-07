@@ -1,11 +1,8 @@
-"""Verify the pinned ``tests/fixtures/openapi.snapshot.json`` matches the
-deployed spec's operationId set.
+"""Verify deployment operationIds match the repo-derived pinned contract.
 
-Marked ``live`` so it only runs when ``make test-live`` opts in. If this
-fails, the data-api spec has drifted from the pinned fixture — refresh via:
-
-    curl -s https://data.optionsanalysissuite.com/openapi.json \\
-      > tests/fixtures/openapi.snapshot.json
+Marked ``live`` so it only runs when ``make test-live`` opts in. The fixture is
+generated from the repository, not copied back from production: a pinned-only
+operation normally means production has not deployed the current contract.
 """
 
 from __future__ import annotations
@@ -42,9 +39,9 @@ def test_pinned_fixture_matches_live_spec() -> None:
     drifted_in_pinned = pinned - live
     assert not drifted_in_live, (
         f"Live spec has new operationIds not in the pinned fixture: "
-        f"{sorted(drifted_in_live)} — refresh tests/fixtures/openapi.snapshot.json"
+        f"{sorted(drifted_in_live)} — update the repo contract and regenerate SDK artifacts"
     )
     assert not drifted_in_pinned, (
         f"Pinned fixture has operationIds the live spec no longer serves: "
-        f"{sorted(drifted_in_pinned)} — refresh tests/fixtures/openapi.snapshot.json"
+        f"{sorted(drifted_in_pinned)} — deploy the current repo contract or investigate the removal"
     )

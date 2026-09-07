@@ -4,7 +4,7 @@
   "info": {
     "title": "Options Analysis Suite API",
     "version": "1.0.0",
-    "description": "Institutional-grade options analytics API. Programmatic access to 17 pricing models (including 7 exotic options), auto-calibration, real-time exposure analytics, WebSocket streaming, and pre-computed market data.\n\n## Features\n\n- **17 pricing models** — 10 standard (Black-Scholes, Heston, SABR, FFT (Carr-Madan with 6 characteristic functions), Variance Gamma, Jump Diffusion (Kou/Bates/Merton), Binomial, PDE, Monte Carlo, Local Volatility (Dupire + eSSVI)) plus 7 exotic (Barrier, Asian, Lookback, Digital, Compound, Chooser, Multi-Asset) with optional strategy-insight card via `includeInsight`\n- **Auto-calibration** — Heston, SABR, VG, JD, and Local Vol calibrate against live broker chain data in 0.25-16s\n- **Greek exposure** — GEX, DEX, VEX, Vanna, Charm, Vomma with gamma flip detection, call/put walls, abs gamma anchor, dealer positioning regime\n- **Real-time streaming** — WebSocket endpoint for live quotes, Greeks, and computed exposure snapshots\n- **Pre-computed data** — market regime, IV surfaces, snapshots, metrics, scanner, risk-neutral + lognormal probability distributions\n\n## Authentication\n\nAll `/v1/*` endpoints require an API key. Pass it via either header:\n\n- `Authorization: Bearer oas_live_...`\n- `X-API-Key: oas_live_...`\n\n## Rate limits\n\nSeparate buckets for data and compute endpoints (per user, shared across all API keys):\n\n- **Data** (`/v1/data/*`): **120 requests/minute**\n- **Compute** (`/v1/compute/*`): **120 requests/minute**\n- **Cheap compute** (BS, binomial, exposure, max pain, expected move): max **6 concurrent**\n- **Heavy compute** (MC, PDE, Heston, Local Vol, SABR, JD, VG, scenario, sensitivity): max **2 concurrent**\n- **Calibration**: max **1 concurrent** job (own lane, separate from compute pools) · hard-capped at **500/day** per user\n- Heavy compute endpoints may return **503** when worker capacity is unavailable\n- 429 responses include `X-RateLimit-Bucket` header (`data` or `compute`)\n\n## Broker credentials (BYOK)\n\nSome endpoints (calibration, full-mode probability, streaming) require live broker chain data. The API doesn't pay for market data — you supply your own credentials via headers:\n\n- **TastyTrade**: `X-Broker-Type: tastytrade`, `X-Tastytrade-Refresh-Token`, `X-Tastytrade-Client-Secret`\n- **Tradier**: `X-Broker-Type: tradier`, `X-Tradier-Key`\n\nNote: Public.com is **not supported on the API tier** (their Individual API program restricts third-party platforms). Public is available on the Pro webapp tier for in-browser use only.\n\n## Best practices (especially for LLM-driven agents)\n\n- **Calibrate once, then persist the fitted params — not the `calibrationId`.** `calibrationId` is a short-lived handle into a 30-second in-memory cache; it works for immediate follow-up `/price` and `/greeks` calls but is not durable. For reuse beyond 30s, save the fitted parameters from the calibration response and pass them as `modelParams` on subsequent calls. Either path avoids the 500/day calibration quota. Don't set `resolve.calibration: true` on every repeated call for the same symbol.\n- **Prefer `/v1/data/*` over recomputing.** Greeks history, IV surfaces, snapshot metrics, metrics-batch, scanner rankings, and regime classifications are precomputed or cached where available — typically much faster than recomputing from scratch. Don't loop `/v1/compute/greeks` to reconstruct what `/v1/data/greeks-history/:symbol` already returns.\n- **Use batch endpoints.** `/v1/data/metrics/batch` takes multiple symbols in one call; MultiAsset accepts `modelParams.tickers` for basket pricing. One batch call beats a loop of N single-symbol calls.\n- **Use canonical ticker symbols.** Symbols may contain letters, numbers, dot, dash, or slash (examples: `SPY`, `BRK.B`, `BRK-B`, `/ES`). Space-separated class shares such as `BRK B` are rejected; use dot or dash form instead.\n- **Use ticker auto-fill instead of fabricated numerics.** Pass `symbol` + `expiry` and let the API resolve `S`, `sigma`, `r`, `t` from cached market data — the response's `resolved` block shows which source filled each field (`snapshot`, `atmIv-expiry`, `hv-30d`, `fred-DGS3MO`, …). Don't hallucinate market values from training data.\n- **Always inspect `warnings` and `resolved`.** The compute route returns top-level `warnings` plus a `resolved` block whenever ticker auto-fill ran. Agents that ignore these can act on a price computed with a stale spot or a missing-dividend fallback.\n- **Honor `Retry-After` on 429.** Sleep the suggested duration. Retrying instantly in a tight loop wastes tokens and bounces off the same limit.\n- **Use `X-Cache-Status` to guide polling cadence.** Data responses include `X-Cache-Status`; values include `HIT`, `MISS`, `DEDUP`, `NO_REDIS`, and error/fallback statuses. If you see all HITs, you're polling faster than the underlying data updates — back off.\n- **Don't repoll faster than the underlying data updates.** Most `/v1/data/*` endpoints back tables that refresh on a documented daily cron. Repolling every 30s returns the same bytes.\n- **Stream live data over `/v1/ws`, don't poll REST.** Up to 30 msg/sec × 50 symbols × 5 sessions beats any REST polling loop on freshness and rpm budget.\n- **Match model to task.** Black-Scholes and Binomial are sub-100ms and correct for vanilla options. Reserve Heston/SABR/Local Vol/JD/MC for cases where skew, jumps, or path-dependence actually matter.\n- **Scope and secure keys.** Create compute-only, data-only, or streaming-only keys to limit blast radius. Never embed keys in client-side JS, browser extensions, public repos, or LLM tool manifests.",
+    "description": "Institutional-grade options analytics API. Programmatic access to 17 pricing models (including 7 exotic options), auto-calibration, real-time exposure analytics, WebSocket streaming, and pre-computed market data.\n\n## Features\n\n- **17 pricing models** — 10 standard (Black-Scholes, Heston, SABR, FFT (Carr-Madan with 6 characteristic functions), Variance Gamma, Jump Diffusion (Kou/Bates/Merton), Binomial, PDE, Monte Carlo, Local Volatility (Dupire + eSSVI)) plus 7 exotic (Barrier, Asian, Lookback, Digital, Compound, Chooser, Multi-Asset) with optional strategy-insight card via `includeInsight`\n- **Auto-calibration** — Heston, SABR, VG, JD, and Local Vol calibrate against live broker chain data in 0.25-16s\n- **Greek exposure** — GEX, DEX, VEX, Vanna, Charm, Vomma with gamma flip detection, call/put walls, abs gamma anchor, dealer positioning regime\n- **Real-time streaming** — WebSocket endpoint for live quotes, Greeks, and computed exposure snapshots\n- **Pre-computed data** — market regime, IV surfaces, snapshots, metrics, scanner, risk-neutral + lognormal probability distributions\n\n## Authentication\n\nAll `/v1/*` endpoints require an API key. Pass it via either header:\n\n- `Authorization: Bearer oas_live_...`\n- `X-API-Key: oas_live_...`\n\n## Rate limits\n\nSeparate buckets for data and compute endpoints (per user, shared across all API keys):\n\n- **Data** (`/v1/data/*`): **120 requests/minute**\n- **Compute** (`/v1/compute/*`): **120 requests/minute**\n- **Cheap compute** (BS, binomial, exposure, max pain, expected move): max **6 concurrent**\n- **Heavy compute** (MC, PDE, Heston, Local Vol, SABR, JD, VG, scenario, sensitivity): max **2 concurrent**\n- **Calibration**: max **1 concurrent** job (own lane, separate from compute pools) · hard-capped at **500/day** per user\n- Heavy compute endpoints may return **503** when worker capacity is unavailable\n- 429 responses include `X-RateLimit-Bucket` header (`data` or `compute`)\n\n## Broker credentials (BYOK)\n\nSome endpoints (calibration, full-mode probability, streaming) require live broker chain data. The API doesn't pay for market data; you supply your own credentials via request headers (the streaming endpoint takes them in its initial WebSocket auth message instead):\n\n- **TastyTrade**: `X-Broker-Type: tastytrade`, `X-Tastytrade-Refresh-Token`, `X-Tastytrade-Client-Secret`\n- **Tradier**: `X-Broker-Type: tradier`, `X-Tradier-Key`\n- **Schwab**: `X-Broker-Type: schwab`, `X-Schwab-Refresh-Token`, `X-Schwab-Client-Id`, `X-Schwab-Client-Secret` (calibration, full-mode probability, and streaming; streaming additionally requires a Schwab app approved for Accounts and Trading)\n\nNote: Public.com is **not supported on the API tier** (their Individual API program restricts third-party platforms). Public is available on the Pro webapp tier for in-browser use only.\n\n## Best practices (especially for LLM-driven agents)\n\n- **Calibrate once, then persist the fitted params — not the `calibrationId`.** `calibrationId` is a short-lived handle into a 30-second in-memory cache; it works for immediate follow-up `/price` and `/greeks` calls but is not durable. For reuse beyond 30s, save the fitted parameters from the calibration response and pass them as `modelParams` on subsequent calls. Either path avoids the 500/day calibration quota. Don't set `resolve.calibration: true` on every repeated call for the same symbol.\n- **Prefer `/v1/data/*` over recomputing.** Greeks history, IV surfaces, snapshot metrics, metrics-batch, scanner rankings, and regime classifications are precomputed or cached where available — typically much faster than recomputing from scratch. Don't loop `/v1/compute/greeks` to reconstruct what `/v1/data/greeks-history/:symbol` already returns.\n- **Use batch endpoints.** `/v1/data/metrics/batch` takes multiple symbols in one call; MultiAsset accepts `modelParams.tickers` for basket pricing. One batch call beats a loop of N single-symbol calls.\n- **Use canonical ticker symbols.** Symbols may contain letters, numbers, dot, dash, or slash (examples: `SPY`, `BRK.B`, `BRK-B`, `/ES`). Space-separated class shares such as `BRK B` are rejected; use dot or dash form instead.\n- **Use ticker auto-fill instead of fabricated numerics.** Pass `symbol` + `expiry` and let the API resolve `S`, `sigma`, `r`, `t` from cached market data — the response's `resolved` block shows which source filled each field (`snapshot`, `atmIv-expiry`, `hv-20d`, `fred-DGS3MO`, …). Don't hallucinate market values from training data.\n- **Always inspect `warnings` and `resolved`.** The compute route returns top-level `warnings` plus a `resolved` block whenever ticker auto-fill ran. Agents that ignore these can act on a price computed with a stale spot or a missing-dividend fallback.\n- **Honor `Retry-After` on 429.** Sleep the suggested duration. Retrying instantly in a tight loop wastes tokens and bounces off the same limit.\n- **Use `X-Cache-Status` to guide polling cadence.** Data responses include `X-Cache-Status`; values include `HIT`, `MISS`, `DEDUP`, `NO_REDIS`, and error/fallback statuses. If you see all HITs, you're polling faster than the underlying data updates — back off.\n- **Don't repoll faster than the underlying data updates.** Most `/v1/data/*` endpoints back tables that refresh on a documented daily cron. Repolling every 30s returns the same bytes.\n- **Stream live data over `/v1/ws`, don't poll REST.** Up to 30 msg/sec × 50 symbols × 5 sessions beats any REST polling loop on freshness and rpm budget.\n- **Match model to task.** Black-Scholes and Binomial are sub-100ms and correct for vanilla options. Reserve Heston/SABR/Local Vol/JD/MC for cases where skew, jumps, or path-dependence actually matter.\n- **Scope and secure keys.** Create compute-only, data-only, or streaming-only keys to limit blast radius. Never embed keys in client-side JS, browser extensions, public repos, or LLM tool manifests.",
     "contact": {
       "name": "Options Analysis Suite",
       "url": "https://optionsanalysissuite.com"
@@ -35,7 +35,7 @@
     },
     {
       "name": "Streaming",
-      "description": "Real-time WebSocket streaming at `/v1/ws`. Supports quote, greeks, and exposure channels with BYOK broker credentials (TastyTrade, Tradier). See streaming documentation."
+      "description": "Real-time WebSocket streaming at `/v1/ws`. Supports quote, greeks, and exposure channels with BYOK broker credentials (TastyTrade, Tradier, Schwab; Schwab streaming requires an app approved for Accounts and Trading). See streaming documentation."
     },
     {
       "name": "Health",
@@ -70,7 +70,7 @@
       "post": {
         "operationId": "compute.price",
         "summary": "Multi-model option pricing",
-        "description": "Price an option using one of 17 supported pricing models. For advanced models, pass model-specific parameters via `modelParams`, or use a `calibrationId` from `/v1/compute/calibrate` to reuse calibrated parameters.\n\n**Required tenor:** every request must specify a time-to-expiry. Provide either `t` (numeric years) **or** `expiry` / `expiration` (YYYY-MM-DD). Missing both returns a `400` validation error.\n\n**Ticker auto-fill:** supply `symbol: \"AAPL\"` (plus `expiry: \"YYYY-MM-DD\"` since tenor is mandatory) to let the API fill `S`, `sigma`, `q`, `r`, and `t` from cached market data. User-supplied numeric fields always win; the response `resolved` block reports the effective value + source (`override`, `snapshot`, `atmIv-expiry`, `hv-30d`, `dividends-ttm`, `fred-DGS3MO`, etc.). For MultiAsset, supply `modelParams.tickers: [\"SPY\",\"QQQ\",...]` to build the basket from 5y monthly correlations. Requires both `compute` and `data` scopes on the API key. Set `resolve.calibration: true` (Heston/SABR/VG/JD/LocalVol only) to additionally run auto-calibration under the existing calibration quota — broker headers (`X-Broker-Type`, `X-Tradier-Key`, …) are required for this mode.\n\n**modelParams by model:**\n\n- **heston:** `v0`, `kappa` / `hestonKappa`, `theta` / `hestonTheta`, `volOfVol` / `xi` / `hestonVolOfVol` (legacy alias: `sigma`), `rho` / `hestonRho`, `integrationPoints` (legacy alias: `hestonOrder`)\n- **sabr:** `sabrAlpha` / `alpha`, `sabrBeta` / `beta`, `sabrRho` / `rho`, `sabrNu` / `nu`, `approximationMethod` (hagan | obloj | paulot, default hagan), `shift`, `expansionOrder`, `useSmallTimeCorrection`, `fixBeta`, `fixedBetaValue`, `atmReference`, `volFloor`, `useArbitrageChecks`\n- **fft:** `processType` (blackScholes | merton | varianceGamma | heston | kou | bates), `N`, `alpha`, `eta`, `integrationMethod` (legacy aliases: `fftGridSize`, `fftAlpha`, `fftEta`, `fftIntegrationMethod`). Process-specific params match the webapp: Merton `mertonLambda`, `mertonMuJ`, `mertonSigmaJ`; Variance Gamma `vgSigma`, `vgNu`, `vgTheta`; Heston `hestonV0`, `hestonKappa`, `hestonTheta`, `hestonXi`, `hestonRho`; Kou `kouLambda`, `kouP`, `kouEta1`, `kouEta2`; Bates `batesV0`, `batesKappa`, `batesTheta`, `batesSigmaV`, `batesRho`, `batesLambda`, `batesMuJ`, `batesSigmaJ`\n- **vg:** `sigma` / `vgSigma`, `nu` / `vgNu`, `theta` / `vgTheta`, optional `method`, `fftPoints`, `alpha`, `eta`, `cacheFFT`, `weighting`\n- **jd:** `modelType` / `jdModel` (kou | merton | bates, default kou). Merton/Kou accept `baseVolatility` as the diffusion sigma override. Kou: `lambda`, `pUp`, `etaUp`, `etaDown`, optional `tailTolerance` / `tailTol`, `maxK`, `forceFFT`, `fftGridSize`. Merton: `lambda`, `muJ`, `sigmaJ`, optional `maxPoisson`. Bates: `v0`, `kappa`, `theta`, `sigmaV` / `volOfVol` / `xi`, `rho`, `lambda`, `muJ`, `sigmaJ`, optional `forceExactCF`, `fftGridSize`\n- **binomial:** `steps`, `enableAmerican` / `isAmerican`, `treeType` (CRR | JR | TIAN | LR), optional Richardson controls `useRichardsonExtrap`, `richardsonMode`, `stepMultiplier`, `extrapOrder`, and discrete-dividend inputs either as `dividends` array or the webapp-style `useDiscreteDividends`, `exDividendDates`, `dividendAmounts`. The public API uses the ex-date discrete-dividend model.\n- **pde:** `forceMethod` / `pdeForceMethod`, `accuracyThreshold` / `pdeAccuracyThreshold`, plus grid controls `spaceSteps`, `timeSteps`, `sMin`, `sMax`, `gridSpacing`, `rannacherSteps`\n- **mc:** `paths` / `mcPaths` / `nPaths`, `steps` / `stepsPerPath` / `timeSteps` / `nSteps`, `seed` / `mcSeed`, `process` / `processType` (`blackscholes` | `jumpdiffusion` | `meanreverting` | `heston` | `localvolcev` | `localvoldupire`; aliases such as `BlackScholes`, `Merton`, `LocalVolatility`, `Dupire`, and `CEV` are normalized), top-level process params or nested `processParams`, `useAntithetic`, `useControlVariate`, `useImportanceSampling`, `useMomentMatching`, `useQMC`, `qmcType`. `rngMethod: SobolTrue` is normalized to Sobol QMC; non-QMC browser RNG labels fall back to the standard server RNG path. Monte Carlo pricing in the API is European-only. Browser-only execution flags such as `useGPU`, `batchSize`, and `parallelThreads` are ignored server-side.\n- **localvol:** PDE-only public surface. Supported params: `impliedVolData` (array or JSON string), `impliedVolDataArray`, `useDupire`, `useAmerican`, `interpolation` (essvi | linear | svi | dupire; cubic is no longer supported), `spotSteps` / `pdeGridSize`, `timeSteps` / `pdeTimeSteps`, `rannacherSteps`, `regularizationParam`, `localVolBeta` / `beta` / `cevBeta`, `cevScale`, `minVol` / `dupireMinVol`, `maxVol` / `dupireMaxVol`, `ticker`\n- **barrier:** `barrierType` (up-out | down-out | up-in | down-in | double-out | double-in), `barrierLevel`, `rebate`, `monitoringType` (continuous | discrete | window), `monitoringFreq`, `upperBarrier`, `lowerBarrier`, `upperRebate`, `lowerRebate`, `windowStart`, `windowEnd`\n- **asian:** `averagingType` (arithmetic | geometric), `strikeType` (fixed | floating), `method` (curran | geometric; `mc`/`montecarlo` requests are normalized to curran server-side), `numObservations`, `observationFreq`, `observationDates`, `pastFixings`, `runningAverage`, `runningSum`, `fixingsElapsed`\n- **lookback:** `lookbackType` (floating | fixed), `currentMax`, `currentMin`, `monitoringType` / `monitoring`, `monitoringFrequency`, `method`\n- **digital:** `type` / `digitalType` — accepts either short form (`cash` | `asset` | `gap`) or long form (`cash-or-nothing` | `asset-or-nothing` | `gap`); both are equivalent server-side. Also `cashAmount`, `gapAmount`, `smoothing` (clamped server-side to a minimum of 1e-4), `method`\n- **compound:** `compoundType` (call-on-call | call-on-put | put-on-call | put-on-put), `underlyingStrike`, `firstExpiry`, `secondExpiry` (defaults to request `t`), `method`, `mcPaths`, `mcSeed`, `useAntithetic`, `useControlVariate`\n- **chooser:** `chooserType` (simple | complex), `choiceTime`, `maturity`, `callStrike`, `putStrike`, `callMaturity`, `putMaturity`, `method`, `mcPaths`, `useAntithetic`, `useControlVariate`\n- **multiasset:** `payoffType` / `type` / `multiAssetType` (basket | spread | max | min), `numAssets`, `correlation`, `corrMatrix` / `correlationMatrix`, `prices[]`, `volatilities[]`, `dividends[]`, `weights[]`, `method`, `mcPaths`, `seed`, `useAntithetic`, `useControlVariate`, `useSobol`. If `prices[]` is omitted, the request spot `S` is used as the first asset price.",
+        "description": "Price an option using one of 17 supported pricing models. For advanced models, pass model-specific parameters via `modelParams`, or use a `calibrationId` from `/v1/compute/calibrate` to reuse calibrated parameters.\n\n**Required tenor:** every request must specify a time-to-expiry. Provide either `t` (numeric years) **or** `expiry` / `expiration` (YYYY-MM-DD). Missing both returns a `400` validation error.\n\n**Ticker auto-fill:** supply `symbol: \"AAPL\"` (plus `expiry: \"YYYY-MM-DD\"` since tenor is mandatory) to let the API fill `S`, `sigma`, `q`, `r`, and `t` from cached market data. User-supplied numeric fields always win; the response `resolved` block reports the effective value + source (`override`, `snapshot`, `atmIv-expiry`, `hv-20d`, `ratios_ttm`, `profile_yield`, `fred-DGS3MO`, etc.). For MultiAsset, supply `modelParams.tickers: [\"SPY\",\"QQQ\",...]` to build the basket from 5y monthly correlations. Requires both `compute` and `data` scopes on the API key. Set `resolve.calibration: true` (Heston/SABR/VG/JD/LocalVol only) to additionally run auto-calibration under the existing calibration quota — broker headers (`X-Broker-Type`, `X-Tradier-Key`, …) are required for this mode.\n\n**modelParams by model:**\n\n- **heston:** `v0` / `initialVariance` / `hestonV0`, `kappa` / `hestonKappa`, `theta` / `hestonTheta`, `volOfVol` / `sigmaV` / `hestonXi` / `xi` / `hestonVolOfVol` (legacy alias: `sigma`), `rho` / `hestonRho`, `integrationPoints` (legacy alias: `hestonOrder`). Every spelling listed here is accepted identically on `/price`, `/greeks` and `/sensitivity`. Omitted parameters take these defaults, which materially affect the price: `v0` = `sigma^2`, `theta` = `sigma^2`, `kappa` = 2.0, `volOfVol` = 0.3, `rho` = -0.7, `integrationPoints` = 16. Supply them explicitly (or via a calibration) rather than relying on the defaults. Domain rules, applied identically on `/price`, `/greeks` and `/sensitivity` and rejected with a 422 `INVALID_HESTON_PARAMS`: `v0 >= 0`, `theta >= 0` (both are variances), `kappa > 0` (a mean-reversion speed), `volOfVol >= 0`, and `-1 < rho < 1` strictly. Every one of these parameters must be a number or a numeric string; booleans, arrays and objects are rejected with a 422 `INVALID_MODEL_PARAM` rather than coerced. `integrationPoints` is the exception to the last rule only in range: a value outside 8..128 is clamped into it rather than rejected. Where a canonical spelling and a legacy alias are both supplied, the canonical one wins (`volOfVol` over `sigma`, `integrationPoints` over `hestonOrder`). On `/v1/compute/greeks`, the volatility Greeks (`vega`, `vomma`, `vanna`, `veta`, `zomma`, `ultima`, `dcharmDvol`) are taken with respect to the model`s own instantaneous volatility `sqrt(v0)`, not the request `sigma`. With `v0` omitted the two coincide, since `v0` then defaults to `sigma^2`. Note that `sigma` stops influencing the Heston price only once BOTH `v0` and `theta` are supplied - supplying `v0` alone leaves `theta` defaulting to `sigma^2`, so `sigma` still moves the price through the long-run variance (with `v0` = 0.09 and `theta` omitted, `sigma` of 0.1 / 0.2 / 0.4 prices 9.4410 / 10.8481 / 15.0780).\n- **sabr:** `sabrAlpha` / `alpha`, `sabrBeta` / `beta`, `sabrRho` / `rho`, `sabrNu` / `nu`, `approximationMethod` (hagan | obloj | paulot, default hagan), `shift`, `expansionOrder`, `useSmallTimeCorrection`, `fixBeta`, `fixedBetaValue`, `atmReference`, `volFloor`, `useArbitrageChecks`\n- **fft:** `processType` (blackScholes | merton | varianceGamma | heston | kou | bates), `N`, `alpha`, `eta`, `integrationMethod` (legacy aliases: `fftGridSize`, `fftAlpha`, `fftEta`, `fftIntegrationMethod`). Process-specific params match the webapp: Merton `mertonLambda`, `mertonMuJ`, `mertonSigmaJ`; Variance Gamma `vgSigma`, `vgNu`, `vgTheta`; Heston `hestonV0`, `hestonKappa`, `hestonTheta`, `hestonXi`, `hestonRho`; Kou `kouLambda`, `kouP`, `kouEta1`, `kouEta2`; Bates `batesV0`, `batesKappa`, `batesTheta`, `batesSigmaV`, `batesRho`, `batesLambda`, `batesMuJ`, `batesSigmaJ`\n- **vg:** `sigma` / `vgSigma`, `nu` / `vgNu`, `theta` / `vgTheta`, optional `method`, `fftPoints`, `alpha`, `eta`, `cacheFFT`, `weighting`\n- **jd:** `modelType` / `jdModel` (kou | merton | bates, default kou; any other value is rejected with a 422 rather than falling back to kou). Merton/Kou accept `baseVolatility` as the diffusion sigma override. Kou: `lambda`, `pUp`, `etaUp`, `etaDown`, optional `tailTolerance` / `tailTol`, `maxK`, `forceFFT`, `fftGridSize`. Merton: `lambda`, `muJ`, `sigmaJ`, optional `maxPoisson`. Bates: `v0`, `kappa`, `theta`, `sigmaV` / `volOfVol` / `xi`, `rho`, `lambda`, `muJ`, `sigmaJ`, optional `forceExactCF`, `fftGridSize`. Jump defaults when omitted: `lambda` = 0.1, `muJ` = -0.05, `sigmaJ` = 0.15, `pUp` = 0.5, `etaUp` = `etaDown` = 10, `maxK` = 30.\n- **binomial:** `steps`, `enableAmerican` / `isAmerican`, `treeType` (CRR | JR | LR, default LR), optional Richardson controls `useRichardsonExtrap`, `richardsonMode`, `stepMultiplier`, `extrapOrder`, and discrete-dividend inputs either as `dividends` array or the webapp-style `useDiscreteDividends`, `exDividendDates`, `dividendAmounts`. The public API uses the ex-date discrete-dividend model. `steps` and `enableAmerican` / `isAmerican` are also accepted as top-level request fields; where both are supplied the `modelParams` spelling wins, because the generated SDKs populate the top-level pair with their own defaults even when the caller never set them. `treeType` selects the lattice construction: `CRR` is Cox-Ross-Rubinstein; `JR` keeps equal-magnitude CRR up/down factors (`u·d = 1`) and puts drift into the risk-neutral probability (this is NOT the equal-probability Jarrow-Rudd 1983 tree, which puts drift into `u`/`d` with `p = 1/2` and breaks finite-difference cross-Greeks because `u·d ≠ 1`); `LR` is Leisen-Reimer with Peizer-Pratt inversion method 2, is the DEFAULT when `treeType` is omitted, and rounds an even `steps` UP to the next odd count, except at the public 2000-step ceiling where up is unavailable so it rounds DOWN to 1999 (same rule the engine applies at its own higher MAX_BINOMIAL_STEPS). `exDividendDates` entries may be given in YEARS or in DAYS to the ex-date, and a bare number cannot say which - `2.5` on a 3-year option is a legitimate 2.5 days and a legitimate 2.5 years, and the two price differently. Set `dividendTimeUnit` (alias `exDividendTimeUnit`) to `days` or `years` to say which; any other value is rejected with a 422. When it is omitted the legacy rule applies unchanged: entries greater than 2 are read as DAYS, entries of 2 or less as YEARS. Under either reading, an entry that falls after expiry is dropped because it cannot affect the price. Greek accuracy, on the default `LR`: `delta`, `vega`, `rho`, `vanna`, `vomma` and `ultima` match Black-Scholes to better than 0.05% at the money, and `theta`, `charm`, `veta` and `dcharmDvol` to better than 0.15%. `gamma` converges from 1.13% at 50 steps to 0.04% at 1600. `speed`, `zomma` and `color` are the loosest, measured 28.4%, 6.7% and 7.0% at 50 steps, 7.7%, 1.5% and 1.6% at the default 200, and 0.96%, -0.02% and 0.01% at 1600; raise `steps` when the third-order Greeks matter. Away from the money the worst of the seventeen at 200 steps is `zomma` at 20.4%, then `speed` at 9.2% and `color` at 8.9%, with everything else inside 1.2%. Accuracy degrades at low volatility, where these Greeks are also small in absolute terms.\n\n  **`CRR` publishes accurate prices and first-order Greeks, but its higher-order Greeks are only meaningful when `S = K`.** Cox-Ross-Rubinstein centres its lattice on SPOT with `u·d = 1`, so a node lands on the strike only at the money; anywhere else, each bumped reprice moves the payoff kink between nodes and the finite differences measure that motion rather than the option. In practice the CRR cross-Greeks return approximately the at-the-money value at every spot - at K=100, sigma=0.2, 200 steps, `vanna` reads about -0.095 whether the true value is +1.43 (S=80) or -0.96 (S=120). Worst-case error over S in {80, 90, 110, 120}: `vanna` 110%, `charm` 145%, `vomma` 212%, `veta` 55%, `speed` 23%, `zomma` 148%, `ultima` 200%, `dcharmDvol` 218%. This is structural rather than a resolution limit - the same errors appear at 800 steps - and it begins immediately, at 18% for `vanna` by 0.2% moneyness and 50% by 1%, so there is no tolerance band inside which CRR higher-order Greeks can be trusted off the money. `CRR` price, `delta`, `gamma`, `vega`, `theta`, `rho`, `epsilon`, `phi` and `lambda` are unaffected and remain accurate. Use the default `LR` for any Greek above first order; `CRR` is retained because it is the canonical textbook construction that callers cross-check against. `JR` shares the same `u·d = 1` geometry as `CRR` and therefore the same limitation.\n- **pde:** `forceMethod` / `pdeForceMethod` (`analytical` | `pde` | `pde-with-fallback`, normalized case-insensitively; unsupported values return 422), `accuracyThreshold` / `pdeAccuracyThreshold` (non-negative; malformed or negative values return 422), plus grid controls `spaceSteps`, `timeSteps`, `sMin`, `sMax`, `gridSpacing`, `rannacherSteps`\n- **mc:** `paths` / `mcPaths` / `nPaths`, `steps` / `stepsPerPath` / `timeSteps` / `nSteps`, `seed` / `mcSeed`, `process` / `processType` (`blackscholes` | `jumpdiffusion` | `meanreverting` | `heston` | `localvolcev` | `localvoldupire`; aliases such as `BlackScholes`, `Merton`, `LocalVolatility`, `Dupire`, and `CEV` are normalized), top-level process params or nested `processParams`, `useAntithetic`, `useControlVariate`, `useImportanceSampling`, `useMomentMatching`, `useQMC`, `qmcType` (`sobol` | `halton`; other values return 422 `INVALID_MODEL_PARAM`). `processType`, `qmcType`, and `rngMethod` must be strings when supplied; arrays, booleans, and objects return 422 rather than being string-coerced. `rngMethod: SobolTrue` is normalized to Sobol QMC; non-QMC browser RNG labels fall back to the standard server RNG path. Monte Carlo pricing in the API is European-only. Browser-only execution flags such as `useGPU`, `batchSize`, and `parallelThreads` are ignored server-side. Nested `processParams` may supply process-specific fields but cannot override the validated request coordinates `S`, `r`, `q`, `sigma`, or `T`. QMC dimension is the path step count: Sobol supports at most 40 `nSteps` and Halton at most 10. A larger value (including the 252-step non-GBM default when `nSteps` is omitted) returns a 422 `INVALID_MODEL_PARAM` rather than silently running the pseudo-random path or surfacing a generator error.\n\n  `seed` / `mcSeed` is validated rather than coerced: it must be an integer with `|seed| < 2^52` and must not be 0. Zero is rejected because the engine builds its generator with `seed || Date.now()`, so a zero seed silently becomes the wall clock - and on `/v1/compute/greeks` the seed is reused across every bumped evaluation to give common random numbers, so a wall-clock seed would make each bump draw a different stream and the Greeks would measure Monte Carlo noise rather than the bump. Fractional, out-of-range, non-numeric and array/boolean/object values return a `422` with `code: \"INVALID_MODEL_PARAM\"`; a numeric string is accepted only when it spells a plain integer (`\"1337\"` yes, `\"1.5\"` no). On the standard pseudo-random path the generator reduces the seed to 32 bits, so seeds differing by a multiple of 2^32 are the same seed. That equivalence does NOT extend to the QMC paths (`useQMC` with Sobol or Halton): those initializers scale the raw seed before reducing it, and above 2^53 / 1664525 the multiply loses precision, so two seeds a multiple of 2^32 apart diverge - seeds 1 and 1 + 1000x2^32 price 10.6572 vs 10.4724 under Sobol and 10.5099 vs 11.4230 under Halton, against an identical 9.0366 on the standard path. Repeating the same seed is deterministic on every path, and on every supported `processType`. With a valid seed, repeating a request returns the identical price.\n  Two of the six processes carry their own instantaneous-volatility input: `heston` reads `v0` (the instantaneous variance, aliased `hestonV0`; where both spellings are present `hestonV0` wins, matching the process itself) and `meanreverting` reads `meanRevertSigma`. Either may be a number or a non-blank numeric string; accepted strings are normalized before pricing so `/price` and `/greeks` use the same value. Supplied non-numeric, blank, or negative values return a 422 `INVALID_MODEL_PARAM` on both endpoints rather than being quietly replaced. Heston permits the valid boundary `v0 = 0`; mean-reverting requires `meanRevertSigma > 0` because its engine treats zero as omission. A request-level `sigma = 0` is likewise preserved rather than defaulted to 0.2, and omitted Heston `v0` / `theta` then derive as zero. Explicit Heston `theta = 0` and `sigmaV = 0` are also preserved rather than replaced by their defaults.\n  On `/v1/compute/greeks`, the volatility Greeks (`vega`, `vanna`, `vomma`, `veta`, `zomma`, `ultima`, `dcharmDvol`) are differentiated with respect to whichever state the process actually reads: `sqrt(v0)` for Heston (matching the semi-analytic `heston` model), `meanRevertSigma` for mean-reverting, and the request `sigma` for every other process. With explicit Heston `v0`, only that state moves and request `sigma` stays fixed, so an omitted long-run variance `theta` remains at the value `/price` derived from request `sigma`. With `v0` omitted, the stencil rewrites its implicit `v0 = sigma^2`; an implicit `theta = sigma^2` moves with it, preserving the pre-existing derivative coordinate. The scaled step keeps ordinary positive values in range. At `v0 = 0`, and at request `sigma = 0` for the five generic-volatility processes, the centered stencil uses the even continuation in volatility rather than sending a negative magnitude to the engine. A positive value so small that the second- or third-order finite-difference denominator underflows can still be priced, but `/greeks` returns a 422 `INVALID_MODEL_PARAM` instead of publishing sanitized zero derivatives.\n- **localvol:** PDE-only public surface. Supported params: `impliedVolData` (array or JSON string), `impliedVolDataArray`, `useDupire`, `useAmerican`, `interpolation` (essvi | linear | svi | dupire; cubic is no longer supported), `spotSteps` / `pdeGridSize`, `timeSteps` / `pdeTimeSteps`, `rannacherSteps`, `regularizationParam`, `localVolBeta` / `beta` / `cevBeta`, `cevScale`, `minVol` / `dupireMinVol`, `maxVol` / `dupireMaxVol`, `ticker`\n- **barrier:** `barrierType` (up-out | down-out | up-in | down-in | double-out | double-in), `barrierLevel`, `rebate`, `monitoringType` (continuous | discrete | window), `monitoringFreq`, `upperBarrier`, `lowerBarrier`, `upperRebate`, `lowerRebate`, `windowStart`, `windowEnd`\n- **asian:** `averagingType` (arithmetic | geometric), `strikeType` (fixed | floating), `method` (curran | geometric; `mc`/`montecarlo` requests are normalized to curran server-side), `numObservations` (omitted and zero use the pricer's `floor(252 * t)` default - `ASIAN_DEFAULTS` carries `0`, so zero does not mean \"one fixing\"; positive values truncate toward zero, a result below 1 retains the zero/default behavior, and the effective count clamps to 1..2048; negative, non-finite, empty, boolean, array and object values return 422 `INVALID_MODEL_PARAM`), `observationFreq`, `observationDates` (array or JSON-encoded array of future times to each fixing in years from the valuation time; it must contain at least one date, and dates must be finite, positive, strictly increasing and no later than `t`; malformed/non-array/empty values, violations of those rules, and schedules over 2048 entries return 422 rather than silently using or truncating the generated schedule. On `/greeks`, elapsed finite-difference time is subtracted from every date, explicit or derived, preserving the calendar spacing; the step is shortened when needed so it cannot pass the first fixing. An omitted schedule is materialized once at the requested tenor and then shifted the same way, so the time Greeks measure the decay of the position held rather than a family of contracts re-specified at each bumped tenor; this can change time Greeks materially compared with the old rescaled-schedule behavior. `observationDates` now also applies to `averagingType: \"arithmetic\"`, which previously derived its schedule from `(t, numObservations)` alone and ignored the parameter; where a schedule is supplied its length defines the future fixing count, matching the geometric path), `pastFixings`, `runningAverage`, `runningSum`, `fixingsElapsed`. `fixingDates` and `observations` are accepted aliases for the observation COUNT, not for a schedule; passing an array to either returns 422\n- **lookback:** `lookbackType` (floating | fixed), `currentMax`, `currentMin`, `monitoringType` / `monitoring`, `monitoringFrequency`, `method`\n- **digital:** `type` / `digitalType` — accepts either short form (`cash` | `asset` | `gap`) or long form (`cash-or-nothing` | `asset-or-nothing` | `gap`); both are equivalent server-side. Also `cashAmount`, `gapAmount`, `smoothing` (clamped server-side to a minimum of 1e-4), `method`\n- **compound:** `compoundType` (call-on-call | call-on-put | put-on-call | put-on-put), `underlyingStrike`, `firstExpiry`, `secondExpiry` (defaults to request `t`), `method`, `mcPaths`, `mcSeed`, `useAntithetic`, `useControlVariate`. Requires 0 < `firstExpiry` < `secondExpiry`; violations are rejected with a 422 on both `/price` and `/greeks`. A supplied `mcPaths` is clamped to 2..1000000; when it is omitted the pricer applies its own default of **10000** paths, so omitting it is not the same as sending 100000. The lower bound is 2 rather than 1 because the antithetic path pairs `floor(mcPaths / 2)` draws, and a single path yields none. `mcSeed` does not clamp: it must be an integer with `|mcSeed| < 2^52` and must not be 0 (the pricer reads `mcSeed || Date.now()`, so a zero seed would silently become the wall clock). Fractional, out-of-range, non-numeric and array/boolean/object values are rejected with a 422. A numeric string is accepted only when it spells a plain integer: `\"1337\"` yes, `\"1.0000000000000001\"` no. Two limits worth knowing rather than discovering. First, the seed is reduced to 32 bits by the generator, so seeds differing by a multiple of 2^32 are the same seed. Second, a JSON number literal is rounded to a double by the parser before the API ever sees it, so a fraction finer than the double spacing at your magnitude is already gone and no server-side check can recover it - `1.0000000000000001` arrives as `1`. That is why seeds at or above 2^52 are refused outright (there the spacing reaches 1, so any fractional literal has already become an integer), and why the string form is the exact one at every magnitude.\n- **chooser:** `chooserType` (simple | complex; anything else is a 422), `choiceTime`, `maturity`, `callStrike`, `putStrike`, `callMaturity`, `putMaturity`, `method`, `mcPaths`, `rngSeed` / `seed` / `mcSeed`, `useAntithetic`, `useControlVariate`. `choiceTime` must be positive. A **simple** chooser additionally requires `maturity` > `choiceTime`; a **complex** chooser requires `callMaturity` > `choiceTime` and `putMaturity` > `choiceTime` (`maturity` only supplies their default). Violations are rejected with a 422 on both `/price` and `/greeks`. A supplied `mcPaths` is clamped to 2..1000000, but note the effective floor is higher: the chooser pricer runs `max(mcPaths, 20000)` paths, so any value below 20000 - including the 10000 it defaults to when omitted - executes at 20000. Monte Carlo pricing is deterministic: `rngSeed` (also accepted as `seed` or `mcSeed`) defaults to 1337, and repeating a request returns the same price. It must be an integer with `|seed| < 2^52`; fractional, non-numeric, and array/boolean/object values return a 422, and a numeric string is accepted only when it spells a plain integer (`\"1337\"` yes, `\"1.5\"` no). Unlike `mc`, `compound` and `multiasset`, a seed of **0 is accepted** here: this engine tests for `undefined`/`null` rather than falsiness and its Mulberry32 generator adds a constant before first use, so state 0 is a working stream rather than a silent fallback to the wall clock. The generator reduces the seed with `seed >>> 0`, so seeds differing by a multiple of 2^32 are the same seed. On `/v1/compute/greeks` the seed is reused across every bumped evaluation and the same resolved seed is used by the optional insight repricer, so both remain deterministic and the Greeks measure the bump rather than sampling noise.\n- **multiasset:** `payoffType` / `type` / `multiAssetType` (basket | spread | max | min), `numAssets`, `correlation`, `corrMatrix` / `correlationMatrix`, `prices[]`, `volatilities[]`, `dividends[]`, `weights[]`, `method`, `mcPaths`, `seed`, `useAntithetic`, `useControlVariate`, `useSobol`. If `prices[]` is omitted, the request spot `S` is used as the first asset price. Monte Carlo pricing is deterministic: `seed` defaults to 1337, and repeating a request returns the same price. `seed` must be an integer whose unsigned 32-bit value is non-zero - the generator is seeded with `seed >>> 0`, so 0 and any multiple of 2^32 are rejected with a 422, as are non-integer, non-numeric, and out-of-range values at or above 2^52. A numeric string is accepted only when it spells a plain integer: `\"1337\"` yes, `\"1.0000000000000001\"` no. One limit no server-side check can close: a JSON number literal is rounded to a double by the parser before it reaches the API, so a fraction finer than the double spacing at your magnitude is already gone - `1.0000000000000001` arrives as `1`. That is why the 2^52 bound exists (at and above it the spacing reaches 1, so a fractional literal has already become an integer) and why the string form is the exact one at every magnitude. The remaining numeric knobs do normalize rather than reject: `mcPaths` is clamped to 1..1000000 and defaults to 100000. `numAssets` resolves to the LARGEST of the explicit value (truncated toward zero, or 2 when omitted) and the lengths of any supplied `prices[]` / `volatilities[]` / `dividends[]` / `weights[]`, capped at 32 - so `numAssets: 2` with three prices resolves to three assets, and an omitted count with a single price still resolves to two. Each of those arrays is then padded or truncated to the resolved count using the request `S` / `sigma` / `q` and equal weights.",
         "tags": [
           "Compute"
         ],
@@ -607,7 +607,7 @@
       "post": {
         "operationId": "compute.greeks",
         "summary": "Multi-model Greeks",
-        "description": "Compute all 17 Greeks for any of the 17 supported pricing models. Returns price alongside the full Greek vector. Accepts the same `modelParams` as `/v1/compute/price`, including ticker auto-fill (`symbol`, `expiry`, `modelParams.tickers`, `resolve.calibration`). Set `includeInsight: true` to attach the Strategy-page exotic insight card for supported exotic models (Barrier, Asian, Lookback, Digital, Compound, Chooser, MultiAsset).\n\n**Required tenor:** every request must specify a time-to-expiry via either `t` (numeric years) or `expiry` / `expiration` (YYYY-MM-DD). Missing both returns a `400` validation error — the API never invents a tenor.",
+        "description": "Compute all 17 Greeks for any of the 17 supported pricing models. Returns price alongside the full Greek vector. Accepts the same `modelParams` as `/v1/compute/price`, including ticker auto-fill (`symbol`, `expiry`, `modelParams.tickers`, `resolve.calibration`). For American-exercise Greeks on a dividend payer, use `model: \"binomial\"` with `isAmerican: true` and a discrete-dividend schedule - either `modelParams.dividends` (a list of `{ time: years-to-ex-date, amount: cash-per-share }`) or the webapp-style `useDiscreteDividends` / `exDividendDates` / `dividendAmounts` aliases - exactly as documented under `/v1/compute/price`. Set `includeInsight: true` to attach the Strategy-page exotic insight card for supported exotic models (Barrier, Asian, Lookback, Digital, Compound, Chooser, MultiAsset).\n\n**Required tenor:** every request must specify a time-to-expiry via either `t` (numeric years) or `expiry` / `expiration` (YYYY-MM-DD). Missing both returns a `400` validation error — the API never invents a tenor.",
         "tags": [
           "Compute"
         ],
@@ -951,11 +951,11 @@
                     "value": {
                       "model": "monte-carlo",
                       "price": 10.4506,
-                      "delta": 0.6392,
-                      "gamma": 0.0191,
-                      "vega": 37.6509,
-                      "theta": -6.4365,
-                      "rho": 53.4268,
+                      "delta": 0.6368,
+                      "gamma": 0.0188,
+                      "vega": 0.3752,
+                      "theta": -0.0176,
+                      "rho": 0.5323,
                       "inputs": {
                         "isCall": true,
                         "S": 100,
@@ -1527,7 +1527,7 @@
       "post": {
         "operationId": "compute.scenario",
         "summary": "Spot × volatility price matrix",
-        "description": "Generate a 2D scenario matrix of option prices across spot and volatility perturbations. Useful for risk scenario analysis and heat maps.",
+        "description": "Generate a 2D scenario matrix of option prices across spot and volatility perturbations. Useful for risk scenario analysis and heat maps.\n\n**Models:** defaults to `bs` (European Black-Scholes). Set `model: \"binomial\"` to price every cell on the ex-dividend binomial tree, honoring `isAmerican`, `steps`, `treeType`, and a discrete-dividend schedule in `modelParams` (see `/v1/compute/price`) - so an American option on a dividend payer reflects early exercise. The response echoes the `model` used.",
         "tags": [
           "Compute"
         ],
@@ -1581,6 +1581,7 @@
                   "example": {
                     "summary": "Scenario matrix with structured cells",
                     "value": {
+                      "model": "bs",
                       "spotChanges": [
                         -0.05,
                         0
@@ -1733,7 +1734,7 @@
       "post": {
         "operationId": "compute.sensitivity",
         "summary": "Greeks curves vs spot/time/volatility",
-        "description": "Compute Greeks across a single axis (spot, time, or volatility). Returns arrays of {x, price, delta, gamma, vega, theta, rho} points suitable for charting.",
+        "description": "Compute Greeks across a single axis (spot, time, or volatility). Returns arrays of {x, price, delta, gamma, vega, theta, rho} points suitable for charting.\n\n**Supported models:** `bs` (default), `heston`, and `binomial`.\n\n**`binomial` prices each point on the ex-dividend binomial tree**, honoring `isAmerican`, `steps`, `treeType`, and a discrete-dividend schedule in `modelParams` (see `/v1/compute/price`), so an American short call on a dividend payer shows the early-exercise divergence the `bs`/`heston` sweeps cannot. Each binomial point carries `price`, `delta`, and `gamma` only (from the binomial tree — Richardson-extrapolated when the config requests it, exactly as on `/v1/compute/price` — in the same convention as the `bs` sweep); higher-order and per-day Greeks are not computed on the binomial sweep - use `bs`/`heston`, or call `/v1/compute/greeks` with `model: \"binomial\"` per point, when those matter.\n\n**Heston on this endpoint requires all five parameters explicitly.** Unlike `/v1/compute/price` and `/v1/compute/greeks`, which default `v0` and `theta` from the request `sigma`, a sweep that silently fell back to defaults would be a misleading chart rather than a single misleading number - so `v0`, `kappa`, `theta`, `volOfVol` and `rho` must all be supplied under one of their accepted spellings (see the `modelParams by model` list on `/v1/compute/price`; all spellings are accepted identically here). Omitting any of them returns a `422` with `code: \"MISSING_HESTON_PARAMS\"` naming the missing ones. Values that are present but out of domain return a `422` with `code: \"INVALID_HESTON_PARAMS\"`, and values that are not numbers return `code: \"INVALID_MODEL_PARAM\"` - the same resolver, rules and codes the pricing endpoints use.",
         "tags": [
           "Compute"
         ],
@@ -1788,6 +1789,153 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SensitivityResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request — validation failed or invalid parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "API key missing or invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "API key lacks the required scope for this endpoint",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScopeError"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "Method not allowed for this endpoint",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MethodNotAllowedError"
+                }
+              }
+            },
+            "headers": {
+              "Allow": {
+                "description": "Allowed methods for this endpoint",
+                "schema": {
+                  "type": "string",
+                  "example": "POST"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Semantic validation failed after request parsing/resolution",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SemanticValidationError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit or compute concurrency limit exceeded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/RateLimitError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ComputeConcurrencyLimitError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CalibrationQuotaError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/compute/strategy": {
+      "post": {
+        "operationId": "compute.strategy",
+        "summary": "Multi-leg strategy: net price, net Greeks, payoff curve",
+        "description": "Price a multi-leg options strategy in a single call and get its net cost, position-level net Greeks, risk metrics (max profit/loss, breakevens, profit zone, risk/reward, probability of profit), and a payoff-at-expiry curve.\n\nEach option leg is priced through the same model dispatcher as `/v1/compute/price` and `/v1/compute/greeks` — set a per-leg `model` of `bs` (European) or `binomial` (American-aware, with `isAmerican`, `steps`, and a discrete-dividend schedule in `modelParams`). Supply `premium` on a leg to value it at an observed market premium instead of the model price; omit it to use the model. Stock legs use `costBasis` (per share, defaults to the shared spot) and `quantity` in shares.\n\nLegs share the underlying `S`/`r`/`q` and, by default, `sigma`/`t`; a leg may override `sigma` and `t` for a skew or a diagonal. Net Greeks are share-equivalent: an option leg contributes `signedQty x 100 x per-contract Greek`, a stock leg contributes `signedQty` to delta, and short legs are negative — so a covered call (100 long shares, 1 short call) nets a positive but sub-100 delta. Unbounded max profit/loss are returned as null with `unbounded` flags, since JSON cannot carry Infinity.",
+        "tags": [
+          "Compute"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StrategyRequest"
+              },
+              "examples": {
+                "example": {
+                  "summary": "Covered call: long 100 shares + short 1 call",
+                  "value": {
+                    "S": 100,
+                    "r": 0.04,
+                    "q": 0.01,
+                    "sigma": 0.25,
+                    "t": 0.0833,
+                    "legs": [
+                      {
+                        "type": "stock",
+                        "side": "long",
+                        "quantity": 100,
+                        "costBasis": 98
+                      },
+                      {
+                        "type": "call",
+                        "side": "short",
+                        "quantity": 1,
+                        "strike": 105
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Net cost, net Greeks, risk metrics, and payoff curve",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StrategyResponse"
                 }
               }
             }
@@ -2177,7 +2325,7 @@
       "post": {
         "operationId": "compute.probability",
         "summary": "Risk-neutral + lognormal probability distributions",
-        "description": "Compute the implied probability distribution of the underlying at expiration. Returns BOTH the risk-neutral distribution (eSSVI + Breeden-Litzenberger with finite-difference fallback) AND a lognormal baseline, plus statistics (implied move, range bounds, fair value). Supports two modes:\n\n- **simple**: Pre-computed strikes + IVs (no broker needed)\n- **full**: BYOK broker credentials; API fetches live chain across multiple expirations and calibrates eSSVI\n\n### Required headers for `mode: \"full\"`\n\n- **Tradier** (1 credential header) — uses a static Production Access Token:\n  - `X-Broker-Type: tradier`\n  - `X-Tradier-Key: <your Tradier production access token>`\n- **Tastytrade** (2 credential headers) — uses OAuth 2.0 refresh-token flow. The server posts `{grant_type: \"refresh_token\", refresh_token, client_secret}` to Tastytrade's token endpoint to mint a short-lived access token, which is reused until near expiry. Both values must come from the **same Tastytrade OAuth app**:\n  - `X-Broker-Type: tastytrade`\n  - `X-Tastytrade-Refresh-Token: <OAuth refresh token from your Tastytrade OAuth app>`\n  - `X-Tastytrade-Client-Secret: <OAuth client secret from the SAME Tastytrade OAuth app>`\n\n`mode: \"simple\"` requires no headers. Public.com is not supported on the API tier.\n\nCredential sources: Tradier → https://docs.tradier.com/docs/getting-started · Tastytrade → https://developer.tastytrade.com/oauth/",
+        "description": "Compute the implied probability distribution of the underlying at expiration. Returns BOTH the risk-neutral distribution (eSSVI + Breeden-Litzenberger with finite-difference fallback) AND a lognormal baseline, plus statistics (implied move, range bounds, fair value). Supports two modes:\n\n- **simple**: Pre-computed strikes + IVs (no broker needed)\n- **full**: BYOK broker credentials; API fetches live chain across multiple expirations and calibrates eSSVI\n\n### Data requirements\n\nAt least **5 strikes** are required. The Breeden-Litzenberger second difference is taken on interior points only, so N strikes yield N-2 density points and the extractor needs 3 of them. The public request validator returns 400 for fewer than 5; broker chains that prepare fewer than 5 usable strikes return 422 `INSUFFICIENT_DISTRIBUTION_DATA`.\n\nIn `mode: \"simple\"`, every strike must carry a positive `iv`; an unusable value is rejected rather than substituted, because that strike's call price feeds the second difference and would bend the whole published density. In `mode: \"full\"`, an `expiration` that is not listed for the symbol returns a 422 `UNKNOWN_EXPIRATION` rather than being silently swapped for the front month; a listed expiration after its 4:00 p.m. `America/New_York` close returns 422 `EXPIRED_EXPIRATION` rather than being repriced at a one-day floor.\n\nWhen the density cannot be extracted, `riskNeutral.pdf` is empty, `riskNeutral.stats` is `null`, and `riskNeutral.fallbackReason` carries the reason. `lognormal.stats` is `null` when the chain has no usable implied volatilities to average.\n\n### Required headers for `mode: \"full\"`\n\n- **Tradier** (1 credential header) — uses a static Production Access Token:\n  - `X-Broker-Type: tradier`\n  - `X-Tradier-Key: <your Tradier production access token>`\n- **Tastytrade** (2 credential headers) — uses OAuth 2.0 refresh-token flow. The server posts `{grant_type: \"refresh_token\", refresh_token, client_secret}` to Tastytrade's token endpoint to mint a short-lived access token, which is reused until near expiry. Both values must come from the **same Tastytrade OAuth app**:\n  - `X-Broker-Type: tastytrade`\n  - `X-Tastytrade-Refresh-Token: <OAuth refresh token from your Tastytrade OAuth app>`\n  - `X-Tastytrade-Client-Secret: <OAuth client secret from the SAME Tastytrade OAuth app>`\n- **Schwab** (3 credential headers) — per-user-app OAuth 2.0 (BYOK). Register your own Schwab app and bring its `client_id` + `client_secret` plus a `refresh_token` from the Schwab OAuth redirect. The server exchanges them (HTTP Basic auth) for a ~30-minute access token, reused until near expiry. All three must come from the **same Schwab app**:\n  - `X-Broker-Type: schwab`\n  - `X-Schwab-Refresh-Token: <refresh token from your Schwab OAuth app>`\n  - `X-Schwab-Client-Id: <client id of the SAME Schwab app>`\n  - `X-Schwab-Client-Secret: <client secret of the SAME Schwab app>`\n\n`mode: \"simple\"` requires no headers. Public.com is not supported on the API tier.\n\nCredential sources: Tradier → https://docs.tradier.com/docs/getting-started · Tastytrade → https://developer.tastytrade.com/oauth/ · Schwab → https://developer.schwab.com/",
         "tags": [
           "Compute"
         ],
@@ -2190,10 +2338,11 @@
               "type": "string",
               "enum": [
                 "tradier",
-                "tastytrade"
+                "tastytrade",
+                "schwab"
               ]
             },
-            "description": "Required for `mode: full`. Public.com is not supported on the API tier (their Individual API program restricts third-party platforms)."
+            "description": "Required for `mode: full` (tradier, tastytrade, or schwab). Public.com is not supported on the API tier (their Individual API program restricts third-party platforms)."
           },
           {
             "name": "X-Tradier-Key",
@@ -2221,6 +2370,33 @@
               "type": "string"
             },
             "description": "Required for `mode: full` with `X-Broker-Type: tastytrade` (alongside `X-Tastytrade-Refresh-Token`). OAuth client secret for your Tastytrade OAuth app."
+          },
+          {
+            "name": "X-Schwab-Refresh-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required for `mode: full` with `X-Broker-Type: schwab` (alongside `X-Schwab-Client-Id` and `X-Schwab-Client-Secret`). Refresh token from your Schwab OAuth app (https://developer.schwab.com/)."
+          },
+          {
+            "name": "X-Schwab-Client-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required for `mode: full` with `X-Broker-Type: schwab`. The client id of your Schwab app; used with the client secret for the Basic-auth token exchange."
+          },
+          {
+            "name": "X-Schwab-Client-Secret",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required for `mode: full` with `X-Broker-Type: schwab`. The client secret of the SAME Schwab app, exchanged with the refresh token to mint a short-lived access token."
           }
         ],
         "requestBody": {
@@ -2380,7 +2556,7 @@
       "post": {
         "operationId": "compute.calibrate",
         "summary": "Auto-calibrate model parameters from live chain data",
-        "description": "Fetches the live options chain from the specified broker (BYOK credentials via headers) and calibrates model parameters. Returns fitted parameters + calibration ID for reuse in `/price` and `/greeks` via the `calibrationId` field. Supports Heston, SABR, VG, JD, and Local Volatility (eSSVI multi-expiration surface).\n\n### Required headers by broker\n\n- **Tradier** (1 credential header) — uses a static Production Access Token:\n  - `X-Broker-Type: tradier`\n  - `X-Tradier-Key: <your Tradier production access token>`\n- **Tastytrade** (2 credential headers) — uses OAuth 2.0 refresh-token flow. The server posts `{grant_type: \"refresh_token\", refresh_token, client_secret}` to `https://api.tastyworks.com/oauth/token` to mint a short-lived access token, which is reused until near expiry; separately, calibration results themselves are cached for 30 seconds. Both credential values must come from the **same Tastytrade OAuth app** — the `client_secret` identifies which app issued the refresh token, so dropping either header fails the OAuth exchange:\n  - `X-Broker-Type: tastytrade`\n  - `X-Tastytrade-Refresh-Token: <OAuth refresh token from your Tastytrade OAuth app>`\n  - `X-Tastytrade-Client-Secret: <OAuth client secret from the SAME Tastytrade OAuth app>`\n\nPublic.com is not supported on the API tier (their Individual API program restricts third-party platforms). Web-app Pro users can still use Public directly in the browser.\n\n**Market assumptions:** Calibrations use `riskFreeRate` (default `0.05`) and `dividendYield` (default `0`) unless you override them in the request. The assumptions are included in the short-lived calibration cache key.\n\n**Quotas:** Calibrations are hard-capped at **500 per day** per user (in addition to the 120/min compute rate limit). Over-quota returns `429 Too Many Requests` with a `Retry-After` header and a `CalibrationQuotaError` body. The quota window resets at midnight UTC. Cached calibration responses (30-second TTL per `credentials.type + symbol + model + expiration + modelParams + market assumptions` key) still count against the quota.",
+        "description": "Fetches the live options chain from the specified broker (BYOK credentials via headers) and calibrates model parameters. Returns fitted parameters + calibration ID for reuse in `/price` and `/greeks` via the `calibrationId` field. Supports Heston, SABR, VG, JD, and Local Volatility (eSSVI multi-expiration surface).\n\n### Required headers by broker\n\n- **Tradier** (1 credential header) — uses a static Production Access Token:\n  - `X-Broker-Type: tradier`\n  - `X-Tradier-Key: <your Tradier production access token>`\n- **Tastytrade** (2 credential headers) — uses OAuth 2.0 refresh-token flow. The server posts `{grant_type: \"refresh_token\", refresh_token, client_secret}` to `https://api.tastyworks.com/oauth/token` to mint a short-lived access token, which is reused until near expiry; separately, calibration results themselves are cached for 30 seconds. Both credential values must come from the **same Tastytrade OAuth app** — the `client_secret` identifies which app issued the refresh token, so dropping either header fails the OAuth exchange:\n  - `X-Broker-Type: tastytrade`\n  - `X-Tastytrade-Refresh-Token: <OAuth refresh token from your Tastytrade OAuth app>`\n  - `X-Tastytrade-Client-Secret: <OAuth client secret from the SAME Tastytrade OAuth app>`\n- **Schwab** (3 credential headers) — per-user-app OAuth 2.0 (BYOK). The server posts `grant_type=refresh_token` with HTTP Basic auth over `client_id:client_secret` to `https://api.schwabapi.com/v1/oauth/token` to mint a ~30-minute access token, reused until near expiry. All three values must come from the **same Schwab app**:\n  - `X-Broker-Type: schwab`\n  - `X-Schwab-Refresh-Token: <refresh token from your Schwab OAuth app>`\n  - `X-Schwab-Client-Id: <client id of the SAME Schwab app>`\n  - `X-Schwab-Client-Secret: <client secret of the SAME Schwab app>`\n\nPublic.com is not supported on the API tier (their Individual API program restricts third-party platforms). Web-app Pro users can still use Public directly in the browser.\n\n**Market assumptions:** Supply `riskFreeRate` and `dividendYield`, or let the API resolve them from stored rate/dividend data. If either remains unresolved, the public endpoint returns 422 `RESOLUTION_FAILED`; it never substitutes `0.05` or `0`. A value that is SUPPLIED but not a number or a numeric string returns 422 `INVALID_MODEL_PARAM` naming the spelling you used, rather than being coerced - `true` and `\"\"` used to calibrate at a 100% and a 0% rate respectively. The resolved assumptions are included in the short-lived calibration cache key.\n\n**Failure semantics:** A chain with too few usable observations returns 422 `INSUFFICIENT_CALIBRATION_DATA`. A calibrator that reports fallback/default parameters, an explicit error, or no finite non-negative fit metric returns 422 `CALIBRATION_FAILED`; those parameters are not cached or returned with a fabricated zero RMSE. Upstream broker failures remain server errors rather than being relabelled as caller input defects.\n\n**Quotas:** Calibrations are hard-capped at **500 per day** per user (in addition to the 120/min compute rate limit). Over-quota returns `429 Too Many Requests` with a `Retry-After` header and a `CalibrationQuotaError` body. The quota window resets at midnight UTC. Cached calibration responses (30-second TTL per `credentials.type + symbol + model + expiration + modelParams + market assumptions` key) still count against the quota.",
         "tags": [
           "Compute"
         ],
@@ -2393,7 +2569,8 @@
               "type": "string",
               "enum": [
                 "tradier",
-                "tastytrade"
+                "tastytrade",
+                "schwab"
               ]
             },
             "description": "Which broker to fetch chain data from. Public.com is not supported on the API tier."
@@ -2424,6 +2601,33 @@
               "type": "string"
             },
             "description": "Required when `X-Broker-Type: tastytrade` (alongside `X-Tastytrade-Refresh-Token`). OAuth client secret for your Tastytrade OAuth app. Used with the refresh token to mint a short-lived access token per calibration."
+          },
+          {
+            "name": "X-Schwab-Refresh-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required when `X-Broker-Type: schwab` (alongside `X-Schwab-Client-Id` and `X-Schwab-Client-Secret`). Refresh token from your Schwab OAuth app (https://developer.schwab.com/)."
+          },
+          {
+            "name": "X-Schwab-Client-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required when `X-Broker-Type: schwab`. The client id of your Schwab app; used with the client secret for the Basic-auth token exchange."
+          },
+          {
+            "name": "X-Schwab-Client-Secret",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required when `X-Broker-Type: schwab`. The client secret of the SAME Schwab app, exchanged with the refresh token to mint a short-lived access token per calibration."
           }
         ],
         "requestBody": {
@@ -2572,6 +2776,16 @@
                 "schema": {
                   "type": "string",
                   "example": "POST"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Semantic validation failed after request parsing/resolution",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SemanticValidationError"
                 }
               }
             }
@@ -2753,7 +2967,9 @@
             "required": false,
             "schema": {
               "type": "integer",
-              "default": 30
+              "default": 30,
+              "minimum": 1,
+              "maximum": 365
             }
           }
         ],
@@ -2874,7 +3090,9 @@
             "required": false,
             "schema": {
               "type": "integer",
-              "default": 30
+              "default": 30,
+              "minimum": 1,
+              "maximum": 365
             }
           }
         ],
@@ -3962,9 +4180,21 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "string",
-              "format": "date"
-            }
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "string",
+                  "enum": [
+                    "latest"
+                  ]
+                }
+              ],
+              "default": "latest"
+            },
+            "description": "Historical session in the supported 1990-01-01 through current-UTC-date + 1 day window, or `latest`. Dates outside the window return 400."
           }
         ],
         "responses": {
@@ -4093,9 +4323,21 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "string",
-              "format": "date"
-            }
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "string",
+                  "enum": [
+                    "latest"
+                  ]
+                }
+              ],
+              "default": "latest"
+            },
+            "description": "Historical session in the supported 1990-01-01 through current-UTC-date + 1 day window, or `latest`. Dates outside the window return 400."
           }
         ],
         "responses": {
@@ -4275,7 +4517,9 @@
             "required": false,
             "schema": {
               "type": "integer",
-              "default": 30
+              "default": 30,
+              "minimum": 1,
+              "maximum": 365
             }
           }
         ],
@@ -4397,16 +4641,36 @@
             "in": "query",
             "required": false,
             "schema": {
-              "type": "string"
-            }
+              "type": "string",
+              "enum": [
+                "high_iv",
+                "iv",
+                "high_oi",
+                "oi",
+                "most_active",
+                "volume",
+                "unusual"
+              ],
+              "default": "high_iv"
+            },
+            "description": "Ranking category. `high_iv`/`iv`, `high_oi`/`oi` and `most_active`/`volume` are accepted spellings of the same three categories."
           },
           {
             "name": "index",
             "in": "query",
             "required": false,
             "schema": {
-              "type": "string"
-            }
+              "type": "string",
+              "enum": [
+                "all",
+                "sp500",
+                "sp400",
+                "sp600",
+                "etf"
+              ],
+              "default": "all"
+            },
+            "description": "Restrict to an index universe. Anything else returns 400."
           },
           {
             "name": "limit",
@@ -5129,6 +5393,16 @@
               }
             }
           },
+          "404": {
+            "description": "Symbol has no ATS firm rows at all. Note an explicit `week_ending` with no rows returns 200 with an empty list instead.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
           "429": {
             "description": "Rate limit exceeded. X-RateLimit-* headers indicate current limits.",
             "content": {
@@ -5258,6 +5532,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ScopeError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Symbol has no OTC firm rows at all. Note an explicit `week_ending` with no rows returns 200 with an empty list instead.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
                 }
               }
             }
@@ -5413,6 +5697,16 @@
               }
             }
           },
+          "404": {
+            "description": "No block summary data available",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          },
           "429": {
             "description": "Rate limit exceeded. X-RateLimit-* headers indicate current limits.",
             "content": {
@@ -5549,6 +5843,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ScopeError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No block summary data for this dealer",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
                 }
               }
             }
@@ -5755,7 +6059,7 @@
       "get": {
         "operationId": "data.economicCalendar",
         "summary": "Economic events calendar",
-        "description": "Macro events, releases, and announcements. Maximum 90-day range. Sourced from `economic_calendar` table.",
+        "description": "Macro events, releases, and announcements. Maximum 90-day requested range; the supported/cached data window is 2015-01-01 through 730 days after the current UTC date. Overlapping ranges are clamped to that window and fully outside ranges return 400. Sourced from `economic_calendar` table.",
         "tags": [
           "Data"
         ],
@@ -5886,7 +6190,7 @@
       "get": {
         "operationId": "data.ipoCalendar",
         "summary": "IPO calendar",
-        "description": "Upcoming and recent initial public offerings. Sourced from `ipo_calendar` table.",
+        "description": "Upcoming and recent initial public offerings. Maximum 365-day requested range; the supported/cached data window is 2015-01-01 through 730 days after the current UTC date. Overlapping ranges are clamped to that window and fully outside ranges return 400. Sourced from `ipo_calendar` table.",
         "tags": [
           "Data"
         ],
@@ -6008,7 +6312,7 @@
       "get": {
         "operationId": "data.dividendCalendar",
         "summary": "Dividend calendar",
-        "description": "Upcoming and recent ex-dividend and payment dates. Sourced from `dividend_calendar` table.",
+        "description": "Upcoming and recent ex-dividend and payment dates. Maximum 365-day requested range; the supported/cached data window is 2015-01-01 through 730 days after the current UTC date. Overlapping ranges are clamped to that window and fully outside ranges return 400. Sourced from `dividend_calendar` table.",
         "tags": [
           "Data"
         ],
@@ -6130,7 +6434,7 @@
       "get": {
         "operationId": "data.splitCalendar",
         "summary": "Stock split calendar",
-        "description": "Upcoming and recent stock splits. Sourced from `split_calendar` table.",
+        "description": "Upcoming and recent stock splits. Maximum 365-day requested range; the supported/cached data window is 2015-01-01 through 730 days after the current UTC date. Overlapping ranges are clamped to that window and fully outside ranges return 400. Sourced from `split_calendar` table.",
         "tags": [
           "Data"
         ],
@@ -6908,6 +7212,43 @@
                                 ],
                                 "description": "Which IV tenor satisfied the pre-event lookup."
                               },
+                              "ivCrushTenorUsed": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "enum": [
+                                      "7d",
+                                      "30d"
+                                    ]
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ],
+                                "description": "The single fixed-maturity tenor BOTH legs of `ivCrushPct` were read from. May differ from `ivTenorUsed`: the pre- and post-event rows are each resolved at their own best tenor for `preEventAtmIv`/`impliedMovePct`, but the crush requires one tenor present in both. Deliberately excludes `generic`, which is a `30d ?? 7d ?? nearest` fallback rather than a fixed maturity, so two rows carrying it may still be different tenors. Null when the rows share no fixed tenor, in which case `ivCrushPct` is null rather than comparing across maturities."
+                              },
+                              "ivCrushPreIv": {
+                                "anyOf": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ],
+                                "description": "Pre-event IV at `ivCrushTenorUsed` — the exact left-hand input to `ivCrushPct`. Reported separately from `preEventAtmIv`, which may sit at a different tenor."
+                              },
+                              "ivCrushPostIv": {
+                                "anyOf": [
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ],
+                                "description": "Post-event IV at `ivCrushTenorUsed` — the exact right-hand input to `ivCrushPct`."
+                              },
                               "impliedMovePct": {
                                 "anyOf": [
                                   {
@@ -6938,7 +7279,7 @@
                                     "type": "null"
                                   }
                                 ],
-                                "description": "Positive = vol collapsed (crush)."
+                                "description": "Positive = vol collapsed (crush). Computed as (ivCrushPreIv - ivCrushPostIv) / ivCrushPreIv × 100, both legs at `ivCrushTenorUsed` — NOT from preEventAtmIv/postEventAtmIv, which may sit at different tenors."
                               }
                             }
                           }
@@ -7594,7 +7935,7 @@
               "type": "string",
               "format": "date"
             },
-            "description": "Start date (YYYY-MM-DD). When set, the route uses explicit date-range mode and ignores days."
+            "description": "Start date (YYYY-MM-DD) in the supported 1990-01-01 through current-UTC-date + 1 day window. When set, the route uses explicit date-range mode and ignores days."
           },
           {
             "name": "end",
@@ -7603,7 +7944,8 @@
             "schema": {
               "type": "string",
               "format": "date"
-            }
+            },
+            "description": "End date in the supported 1990-01-01 through current-UTC-date + 1 day window."
           }
         ],
         "responses": {
@@ -8335,7 +8677,7 @@
       "get": {
         "operationId": "streaming.websocket",
         "summary": "Real-time streaming WebSocket",
-        "description": "Upgrade to a WebSocket connection for real-time market data streaming. Supports three channels:\n\n- **quotes**: live bid/ask/price/volume for underlyings and options\n- **greeks**: live delta/gamma/theta/vega/rho/IV for options\n- **exposure**: computed GEX/DEX/VEX/Vanna/Charm/Vomma snapshots, pushed on significant price ticks\n\n**BYOK broker credentials** are sent via the initial `auth` message. Supported brokers: `tastytrade`, `tradier` (Public.com is not supported — no streaming API).\n\n**Wire protocol:** JSON messages with discriminated `type` field. See the [Streaming Documentation](/docs/streaming) for the full protocol reference.\n\n**Connection lifecycle:** the server's setup (API-key check, tier + `streaming` scope gates, concurrency-slot acquisition) is asynchronous, and broker authentication (Tradier/DXLink handshake) is asynchronous again. Protocol order: `welcome` → `auth` → `auth_result` → `subscribe`. Early frames that arrive before `welcome` are buffered (up to 16) and drained once the session is wired, so sending `auth` in `onopen` works in practice — but the buffer protects only the transport race; protocol ordering still applies, so don't pre-queue `subscribe` before `auth_result`. Racing past the buffer cap returns `error: PRE_WELCOME_BUFFER_FULL`.\n\n**Quick example:**\n```\nwscat -c wss://data.optionsanalysissuite.com/v1/ws?apiKey=oas_live_...\n\n< {\"type\":\"welcome\",\"sessionId\":\"ws_...\",\"serverTime\":...,\"version\":\"1.0\"}\n> {\"type\":\"auth\",\"broker\":\"tastytrade\",\"credentials\":{\"tastytradeRefreshToken\":\"...\",\"tastytradeClientSecret\":\"...\"}}\n< {\"type\":\"connection\",\"status\":\"connecting\",\"broker\":\"tastytrade\"}\n< {\"type\":\"connection\",\"status\":\"connected\",\"broker\":\"tastytrade\"}\n< {\"type\":\"auth_result\",\"success\":true,\"broker\":\"tastytrade\"}\n> {\"type\":\"subscribe\",\"channels\":[\"quotes\",\"greeks\",\"exposure\"],\"symbols\":[\"SPY\"]}\n< {\"type\":\"subscribed\",\"channels\":[\"quotes\",\"greeks\",\"exposure\"],\"symbols\":[\"SPY\"]}\n< {\"type\":\"quote\",\"symbol\":\"SPY\",\"bid\":655.61,\"ask\":656.41,...}\n```\n\n**Session auth**: API key required via `apiKey` query param, `Authorization: Bearer`, or `X-API-Key`.\n",
+        "description": "Upgrade to a WebSocket connection for real-time market data streaming. Supports three channels:\n\n- **quotes**: live bid/ask/price/volume for underlyings and options\n- **greeks**: live delta/gamma/theta/vega/rho/IV for options\n- **exposure**: computed GEX/DEX/VEX/Vanna/Charm/Vomma snapshots, pushed on significant price ticks\n\n**BYOK broker credentials** are sent via the initial `auth` message. Supported brokers: `tastytrade`, `tradier`, `schwab` (Public.com is not supported — no streaming API). Schwab streaming additionally requires the per-user app to be approved for **Accounts and Trading**; a market-data-only Schwab app receives an `auth_result` failure with an actionable message (its REST calibration still works).\n\n**Wire protocol:** JSON messages with discriminated `type` field. See the [Streaming Documentation](/docs/streaming) for the full protocol reference.\n\n**Inbound rate limit.** Frames you SEND are token-bucketed per session. Before the API key has been validated the allowance is a conservative floor (5/s, burst 10); before `welcome`, once the key is known, it is raised to your tier's `maxMessagesPerSecondPerWsSession`, carrying the current fill over rather than resetting. An over-rate frame is DROPPED, not queued, and does not reset the idle timer; you get an `error: INBOUND_RATE_LIMIT` notice at most once per second, and a session that keeps exceeding it is closed with 4429.\n\n**Rate shaping is announced.** When outbound data events exceed your per-session cap they are dropped, and the session now emits a `rate_shaped` control event (`droppedMessages`, `maxMessagesPerSecond`) at most once per second. Previously a shaped stream was indistinguishable from a quiet market. Control events are exempt from the cap, including this one.\n\n**Idle means no subscriptions, not no traffic.** A session holding at least one subscription is never closed for inactivity, however long it stays silent; consuming a stream is the point. A session holding nothing is closed after 30 minutes.\n\n**Channel scopes.** The `exposure` channel runs the same computation as `/v1/compute/exposure` and therefore requires the `compute` scope in addition to `streaming`. Enforcement is staged: it currently logs rather than refusing, and when enabled a subscribe that includes an unscoped channel is rejected in full with `error: CHANNEL_SCOPE_REQUIRED` (non-fatal: the session stays usable for the channels your key does cover). On each successful 60s re-authorization the live scope set is replaced; with enforcement enabled, an active channel whose scope was revoked is unsubscribed then. A database failure can delay that decision up to the separately documented 10-minute unverified ceiling.\n\n**Connection lifecycle:** the server's setup (API-key check, tier + `streaming` scope gates, concurrency-slot acquisition) is asynchronous, and broker authentication (Tradier/DXLink/Schwab handshake) is asynchronous again. Protocol order: `welcome` → `auth` → `auth_result` → `subscribe`. Early frames that arrive before `welcome` are buffered (up to 16) and drained once the session is wired, so sending `auth` in `onopen` works in practice — but the buffer protects only the transport race; protocol ordering still applies, so don't pre-queue `subscribe` before `auth_result`. Racing past the buffer cap returns `error: PRE_WELCOME_BUFFER_FULL`.\n\n**Quick example:**\n```\nwscat -c wss://data.optionsanalysissuite.com/v1/ws?apiKey=oas_live_...\n\n< {\"type\":\"welcome\",\"sessionId\":\"ws_...\",\"serverTime\":...,\"version\":\"1.0\"}\n> {\"type\":\"auth\",\"broker\":\"tastytrade\",\"credentials\":{\"tastytradeRefreshToken\":\"...\",\"tastytradeClientSecret\":\"...\"}}\n< {\"type\":\"connection\",\"status\":\"connecting\",\"broker\":\"tastytrade\"}\n< {\"type\":\"connection\",\"status\":\"connected\",\"broker\":\"tastytrade\"}\n< {\"type\":\"auth_result\",\"success\":true,\"broker\":\"tastytrade\"}\n> {\"type\":\"subscribe\",\"channels\":[\"quotes\",\"greeks\",\"exposure\"],\"symbols\":[\"SPY\"]}\n< {\"type\":\"subscribed\",\"channels\":[\"quotes\",\"greeks\",\"exposure\"],\"symbols\":[\"SPY\"]}\n< {\"type\":\"quote\",\"symbol\":\"SPY\",\"bid\":655.61,\"ask\":656.41,...}\n```\n\n**Session auth**: API key required via `apiKey` query param, `Authorization: Bearer`, or `X-API-Key`.\n",
         "tags": [
           "Streaming"
         ],
@@ -8507,25 +8849,59 @@
           },
           "modelParams": {
             "type": "object",
-            "propertyNames": {
-              "type": "string"
+            "properties": {
+              "dividends": {
+                "description": "Discrete cash-dividend schedule for the binomial engine (model:\"binomial\"): a list of { time: years-to-ex-date (>0), amount: cash-per-share (>=0) }. Fixed cash amounts only (no proportional/escrowed mode). Continuous q is forced to 0 when a schedule is present, to avoid double-counting. Legacy aliases useDiscreteDividends / exDividendDates / dividendAmounts / dividendTimeUnit are also accepted; see the /v1/compute/price description.",
+                "anyOf": [
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "time": {
+                          "type": [
+                            "number",
+                            "string"
+                          ]
+                        },
+                        "amount": {
+                          "type": [
+                            "number",
+                            "string"
+                          ]
+                        }
+                      },
+                      "additionalProperties": {}
+                    }
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
             },
-            "additionalProperties": {
-              "$ref": "#/$defs/__schema0"
-            }
+            "additionalProperties": {}
           },
           "calibrationId": {
             "type": "string"
           },
           "steps": {
-            "default": 200,
+            "description": "Binomial step count (10..2000). Also accepted as modelParams.steps, which wins when both are supplied. When omitted, the dispatcher uses 200.",
             "type": "integer",
             "minimum": 10,
             "maximum": 2000
           },
           "isAmerican": {
-            "default": false,
+            "description": "American exercise. Also accepted as modelParams.isAmerican / modelParams.enableAmerican, which win when both are supplied. When omitted, the dispatcher prices European.",
             "type": "boolean"
+          },
+          "dayCount": {
+            "description": "Day-count basis for the per-day Greeks (theta, charm, veta, color, dcharmDvol). `calendar` divides by 365 calendar days and is the default when omitted; `trading` divides by 252 trading days, making those five Greeks 365/252 (about 1.448x) larger. The other twelve Greeks are unaffected.",
+            "type": "string",
+            "enum": [
+              "calendar",
+              "trading"
+            ]
           },
           "detail": {
             "type": "string",
@@ -8545,39 +8921,6 @@
           "isCall",
           "K"
         ],
-        "$defs": {
-          "__schema0": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "number"
-              },
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              },
-              {
-                "type": "array",
-                "items": {
-                  "$ref": "#/$defs/__schema0"
-                }
-              },
-              {
-                "type": "object",
-                "propertyNames": {
-                  "type": "string"
-                },
-                "additionalProperties": {
-                  "$ref": "#/$defs/__schema0"
-                }
-              }
-            ]
-          }
-        },
         "anyOf": [
           {
             "required": [
@@ -8740,12 +9083,38 @@
           },
           "modelParams": {
             "type": "object",
-            "propertyNames": {
-              "type": "string"
+            "properties": {
+              "dividends": {
+                "description": "Discrete cash-dividend schedule for the binomial engine (model:\"binomial\"): a list of { time: years-to-ex-date (>0), amount: cash-per-share (>=0) }. Fixed cash amounts only (no proportional/escrowed mode). Continuous q is forced to 0 when a schedule is present, to avoid double-counting. Legacy aliases useDiscreteDividends / exDividendDates / dividendAmounts / dividendTimeUnit are also accepted; see the /v1/compute/price description.",
+                "anyOf": [
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "time": {
+                          "type": [
+                            "number",
+                            "string"
+                          ]
+                        },
+                        "amount": {
+                          "type": [
+                            "number",
+                            "string"
+                          ]
+                        }
+                      },
+                      "additionalProperties": {}
+                    }
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
             },
-            "additionalProperties": {
-              "$ref": "#/$defs/__schema0"
-            }
+            "additionalProperties": {}
           },
           "calibrationId": {
             "type": "string"
@@ -8755,53 +9124,28 @@
             "type": "boolean"
           },
           "steps": {
-            "default": 200,
+            "description": "Binomial step count (10..2000). Also accepted as modelParams.steps, which wins when both are supplied. When omitted, the dispatcher uses 200.",
             "type": "integer",
             "minimum": 10,
             "maximum": 2000
           },
           "isAmerican": {
-            "default": false,
+            "description": "American exercise. Also accepted as modelParams.isAmerican / modelParams.enableAmerican, which win when both are supplied. When omitted, the dispatcher prices European.",
             "type": "boolean"
+          },
+          "dayCount": {
+            "description": "Day-count basis for the per-day Greeks (theta, charm, veta, color, dcharmDvol). `calendar` divides by 365 calendar days and is the default when omitted; `trading` divides by 252 trading days, making those five Greeks 365/252 (about 1.448x) larger. The other twelve Greeks are unaffected.",
+            "type": "string",
+            "enum": [
+              "calendar",
+              "trading"
+            ]
           }
         },
         "required": [
           "isCall",
           "K"
         ],
-        "$defs": {
-          "__schema0": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "number"
-              },
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              },
-              {
-                "type": "array",
-                "items": {
-                  "$ref": "#/$defs/__schema0"
-                }
-              },
-              {
-                "type": "object",
-                "propertyNames": {
-                  "type": "string"
-                },
-                "additionalProperties": {
-                  "$ref": "#/$defs/__schema0"
-                }
-              }
-            ]
-          }
-        },
         "anyOf": [
           {
             "required": [
@@ -8881,20 +9225,108 @@
             "exclusiveMinimum": 0
           },
           "riskFreeRate": {
-            "default": 0.05,
             "type": "number"
           },
           "dividendYield": {
-            "default": 0,
             "type": "number"
+          },
+          "symbol": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20,
+            "pattern": "^[A-Za-z0-9./-]+$"
+          },
+          "expiry": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "expiration": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "resolve": {
+            "default": {
+              "spot": true,
+              "sigma": true,
+              "sigmaSource": "auto",
+              "dividend": true,
+              "rate": true,
+              "rateMode": "matched",
+              "tenor": true,
+              "spotSource": "snapshot",
+              "calibration": false
+            },
+            "type": "object",
+            "properties": {
+              "spot": {
+                "default": true,
+                "type": "boolean"
+              },
+              "sigma": {
+                "default": true,
+                "type": "boolean"
+              },
+              "sigmaSource": {
+                "default": "auto",
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "atmIv",
+                  "hv"
+                ]
+              },
+              "dividend": {
+                "default": true,
+                "type": "boolean"
+              },
+              "rate": {
+                "default": true,
+                "type": "boolean"
+              },
+              "rateMode": {
+                "default": "matched",
+                "type": "string",
+                "enum": [
+                  "matched",
+                  "fixedTenor"
+                ]
+              },
+              "rateTenor": {
+                "type": "string",
+                "enum": [
+                  "1MO",
+                  "3MO",
+                  "6MO",
+                  "1Y",
+                  "2Y",
+                  "5Y",
+                  "10Y",
+                  "30Y"
+                ]
+              },
+              "tenor": {
+                "default": true,
+                "type": "boolean"
+              },
+              "spotSource": {
+                "default": "snapshot",
+                "type": "string",
+                "enum": [
+                  "snapshot"
+                ]
+              },
+              "calibration": {
+                "default": false,
+                "type": "boolean"
+              }
+            }
           },
           "wallMaxDte": {
             "type": "number"
           }
         },
         "required": [
-          "strikes",
-          "spotPrice"
+          "strikes"
         ]
       },
       "ScenarioRequest": {
@@ -8915,7 +9347,6 @@
             "type": "number"
           },
           "q": {
-            "default": 0,
             "type": "number"
           },
           "sigma": {
@@ -8925,6 +9356,97 @@
           "t": {
             "type": "number",
             "minimum": 0
+          },
+          "symbol": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20,
+            "pattern": "^[A-Za-z0-9./-]+$"
+          },
+          "expiry": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "expiration": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "resolve": {
+            "default": {
+              "spot": true,
+              "sigma": true,
+              "sigmaSource": "auto",
+              "dividend": true,
+              "rate": true,
+              "rateMode": "matched",
+              "tenor": true,
+              "spotSource": "snapshot",
+              "calibration": false
+            },
+            "type": "object",
+            "properties": {
+              "spot": {
+                "default": true,
+                "type": "boolean"
+              },
+              "sigma": {
+                "default": true,
+                "type": "boolean"
+              },
+              "sigmaSource": {
+                "default": "auto",
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "atmIv",
+                  "hv"
+                ]
+              },
+              "dividend": {
+                "default": true,
+                "type": "boolean"
+              },
+              "rate": {
+                "default": true,
+                "type": "boolean"
+              },
+              "rateMode": {
+                "default": "matched",
+                "type": "string",
+                "enum": [
+                  "matched",
+                  "fixedTenor"
+                ]
+              },
+              "rateTenor": {
+                "type": "string",
+                "enum": [
+                  "1MO",
+                  "3MO",
+                  "6MO",
+                  "1Y",
+                  "2Y",
+                  "5Y",
+                  "10Y",
+                  "30Y"
+                ]
+              },
+              "tenor": {
+                "default": true,
+                "type": "boolean"
+              },
+              "spotSource": {
+                "default": "snapshot",
+                "type": "string",
+                "enum": [
+                  "snapshot"
+                ]
+              },
+              "calibration": {
+                "default": false,
+                "type": "boolean"
+              }
+            }
           },
           "spotChanges": {
             "minItems": 2,
@@ -8941,15 +9463,63 @@
             "items": {
               "type": "number"
             }
+          },
+          "model": {
+            "type": "string",
+            "enum": [
+              "bs",
+              "binomial"
+            ]
+          },
+          "modelParams": {
+            "type": "object",
+            "properties": {
+              "dividends": {
+                "description": "Discrete cash-dividend schedule for the binomial engine (model:\"binomial\"): a list of { time: years-to-ex-date (>0), amount: cash-per-share (>=0) }. Fixed cash amounts only (no proportional/escrowed mode). Continuous q is forced to 0 when a schedule is present, to avoid double-counting. Legacy aliases useDiscreteDividends / exDividendDates / dividendAmounts / dividendTimeUnit are also accepted; see the /v1/compute/price description.",
+                "anyOf": [
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "time": {
+                          "type": [
+                            "number",
+                            "string"
+                          ]
+                        },
+                        "amount": {
+                          "type": [
+                            "number",
+                            "string"
+                          ]
+                        }
+                      },
+                      "additionalProperties": {}
+                    }
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "additionalProperties": {}
+          },
+          "steps": {
+            "description": "Binomial step count (10..2000) for model:\"binomial\". Also accepted as modelParams.steps, which wins when both are supplied. Defaults to 200 when omitted.",
+            "type": "integer",
+            "minimum": 10,
+            "maximum": 2000
+          },
+          "isAmerican": {
+            "description": "American exercise for model:\"binomial\". Also accepted as modelParams.isAmerican / modelParams.enableAmerican, which win when both are supplied. Defaults to European when omitted.",
+            "type": "boolean"
           }
         },
         "required": [
           "isCall",
-          "S",
           "K",
-          "r",
-          "sigma",
-          "t",
           "spotChanges",
           "volChanges"
         ]
@@ -8972,7 +9542,6 @@
             "type": "number"
           },
           "q": {
-            "default": 0,
             "type": "number"
           },
           "sigma": {
@@ -8982,6 +9551,97 @@
           "t": {
             "type": "number",
             "minimum": 0
+          },
+          "symbol": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20,
+            "pattern": "^[A-Za-z0-9./-]+$"
+          },
+          "expiry": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "expiration": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "resolve": {
+            "default": {
+              "spot": true,
+              "sigma": true,
+              "sigmaSource": "auto",
+              "dividend": true,
+              "rate": true,
+              "rateMode": "matched",
+              "tenor": true,
+              "spotSource": "snapshot",
+              "calibration": false
+            },
+            "type": "object",
+            "properties": {
+              "spot": {
+                "default": true,
+                "type": "boolean"
+              },
+              "sigma": {
+                "default": true,
+                "type": "boolean"
+              },
+              "sigmaSource": {
+                "default": "auto",
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "atmIv",
+                  "hv"
+                ]
+              },
+              "dividend": {
+                "default": true,
+                "type": "boolean"
+              },
+              "rate": {
+                "default": true,
+                "type": "boolean"
+              },
+              "rateMode": {
+                "default": "matched",
+                "type": "string",
+                "enum": [
+                  "matched",
+                  "fixedTenor"
+                ]
+              },
+              "rateTenor": {
+                "type": "string",
+                "enum": [
+                  "1MO",
+                  "3MO",
+                  "6MO",
+                  "1Y",
+                  "2Y",
+                  "5Y",
+                  "10Y",
+                  "30Y"
+                ]
+              },
+              "tenor": {
+                "default": true,
+                "type": "boolean"
+              },
+              "spotSource": {
+                "default": "snapshot",
+                "type": "string",
+                "enum": [
+                  "snapshot"
+                ]
+              },
+              "calibration": {
+                "default": false,
+                "type": "boolean"
+              }
+            }
           },
           "axis": {
             "type": "string",
@@ -9022,68 +9682,327 @@
             "type": "string",
             "enum": [
               "bs",
-              "heston"
+              "heston",
+              "binomial"
             ]
           },
           "modelParams": {
             "type": "object",
-            "propertyNames": {
-              "type": "string"
+            "properties": {
+              "dividends": {
+                "description": "Discrete cash-dividend schedule for the binomial engine (model:\"binomial\"): a list of { time: years-to-ex-date (>0), amount: cash-per-share (>=0) }. Fixed cash amounts only (no proportional/escrowed mode). Continuous q is forced to 0 when a schedule is present, to avoid double-counting. Legacy aliases useDiscreteDividends / exDividendDates / dividendAmounts / dividendTimeUnit are also accepted; see the /v1/compute/price description.",
+                "anyOf": [
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "time": {
+                          "type": [
+                            "number",
+                            "string"
+                          ]
+                        },
+                        "amount": {
+                          "type": [
+                            "number",
+                            "string"
+                          ]
+                        }
+                      },
+                      "additionalProperties": {}
+                    }
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
             },
-            "additionalProperties": {
-              "$ref": "#/$defs/__schema0"
-            }
+            "additionalProperties": {}
+          },
+          "steps": {
+            "description": "Binomial step count (10..2000) for model:\"binomial\" sweeps. Also accepted as modelParams.steps, which wins when both are supplied. Defaults to 200 when omitted.",
+            "type": "integer",
+            "minimum": 10,
+            "maximum": 2000
+          },
+          "isAmerican": {
+            "description": "American exercise for model:\"binomial\" sweeps. Also accepted as modelParams.isAmerican / modelParams.enableAmerican, which win when both are supplied. Defaults to European when omitted.",
+            "type": "boolean"
           },
           "greeks": {
             "maxItems": 20,
             "type": "array",
             "items": {
-              "type": "string"
+              "type": "string",
+              "enum": [
+                "price",
+                "delta",
+                "gamma",
+                "vega",
+                "theta",
+                "rho",
+                "vanna",
+                "charm",
+                "vomma",
+                "veta",
+                "speed",
+                "zomma",
+                "color",
+                "ultima",
+                "lambda",
+                "epsilon",
+                "phi",
+                "dcharmDvol"
+              ]
             }
+          },
+          "dayCount": {
+            "description": "Day-count basis for the per-day Greeks (theta, charm, veta, color, dcharmDvol), matching /v1/compute/greeks. `calendar` divides by 365 calendar days and is the default when omitted; `trading` divides by 252 trading days. The other twelve Greeks are unaffected.",
+            "type": "string",
+            "enum": [
+              "calendar",
+              "trading"
+            ]
           }
         },
         "required": [
           "isCall",
-          "S",
           "K",
-          "r",
-          "sigma",
-          "t",
           "axis"
-        ],
-        "$defs": {
-          "__schema0": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "number"
-              },
-              {
+        ]
+      },
+      "StrategyRequest": {
+        "type": "object",
+        "properties": {
+          "S": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "r": {
+            "type": "number"
+          },
+          "q": {
+            "type": "number"
+          },
+          "sigma": {
+            "type": "number",
+            "minimum": 0
+          },
+          "t": {
+            "type": "number",
+            "minimum": 0
+          },
+          "symbol": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20,
+            "pattern": "^[A-Za-z0-9./-]+$"
+          },
+          "expiry": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "expiration": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "resolve": {
+            "default": {
+              "spot": true,
+              "sigma": true,
+              "sigmaSource": "auto",
+              "dividend": true,
+              "rate": true,
+              "rateMode": "matched",
+              "tenor": true,
+              "spotSource": "snapshot",
+              "calibration": false
+            },
+            "type": "object",
+            "properties": {
+              "spot": {
+                "default": true,
                 "type": "boolean"
               },
-              {
-                "type": "null"
+              "sigma": {
+                "default": true,
+                "type": "boolean"
               },
-              {
-                "type": "array",
-                "items": {
-                  "$ref": "#/$defs/__schema0"
-                }
+              "sigmaSource": {
+                "default": "auto",
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "atmIv",
+                  "hv"
+                ]
               },
-              {
-                "type": "object",
-                "propertyNames": {
-                  "type": "string"
-                },
-                "additionalProperties": {
-                  "$ref": "#/$defs/__schema0"
-                }
+              "dividend": {
+                "default": true,
+                "type": "boolean"
+              },
+              "rate": {
+                "default": true,
+                "type": "boolean"
+              },
+              "rateMode": {
+                "default": "matched",
+                "type": "string",
+                "enum": [
+                  "matched",
+                  "fixedTenor"
+                ]
+              },
+              "rateTenor": {
+                "type": "string",
+                "enum": [
+                  "1MO",
+                  "3MO",
+                  "6MO",
+                  "1Y",
+                  "2Y",
+                  "5Y",
+                  "10Y",
+                  "30Y"
+                ]
+              },
+              "tenor": {
+                "default": true,
+                "type": "boolean"
+              },
+              "spotSource": {
+                "default": "snapshot",
+                "type": "string",
+                "enum": [
+                  "snapshot"
+                ]
+              },
+              "calibration": {
+                "default": false,
+                "type": "boolean"
               }
-            ]
+            }
+          },
+          "legs": {
+            "minItems": 1,
+            "maxItems": 10,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "call",
+                    "put",
+                    "stock"
+                  ]
+                },
+                "side": {
+                  "type": "string",
+                  "enum": [
+                    "long",
+                    "short"
+                  ]
+                },
+                "quantity": {
+                  "default": 1,
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "strike": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
+                },
+                "premium": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "costBasis": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "sigma": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "t": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "model": {
+                  "type": "string",
+                  "enum": [
+                    "bs",
+                    "binomial"
+                  ]
+                },
+                "isAmerican": {
+                  "type": "boolean"
+                },
+                "steps": {
+                  "type": "integer",
+                  "minimum": 10,
+                  "maximum": 2000
+                },
+                "modelParams": {
+                  "type": "object",
+                  "properties": {
+                    "dividends": {
+                      "description": "Discrete cash-dividend schedule for the binomial engine (model:\"binomial\"): a list of { time: years-to-ex-date (>0), amount: cash-per-share (>=0) }. Fixed cash amounts only (no proportional/escrowed mode). Continuous q is forced to 0 when a schedule is present, to avoid double-counting. Legacy aliases useDiscreteDividends / exDividendDates / dividendAmounts / dividendTimeUnit are also accepted; see the /v1/compute/price description.",
+                      "anyOf": [
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "time": {
+                                "type": [
+                                  "number",
+                                  "string"
+                                ]
+                              },
+                              "amount": {
+                                "type": [
+                                  "number",
+                                  "string"
+                                ]
+                              }
+                            },
+                            "additionalProperties": {}
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "additionalProperties": {}
+                }
+              },
+              "required": [
+                "type",
+                "side"
+              ]
+            }
+          },
+          "numPoints": {
+            "type": "integer",
+            "minimum": 10,
+            "maximum": 500
+          },
+          "priceRangePct": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 2
           }
-        }
+        },
+        "required": [
+          "legs"
+        ]
       },
       "MaxPainRequest": {
         "type": "object",
@@ -9132,11 +10051,9 @@
             "exclusiveMinimum": 0
           },
           "riskFreeRate": {
-            "default": 0.05,
             "type": "number"
           },
           "dividendYield": {
-            "default": 0,
             "type": "number"
           },
           "atmIV": {
@@ -9155,16 +10072,104 @@
             "type": "number",
             "minimum": 0
           },
+          "symbol": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20,
+            "pattern": "^[A-Za-z0-9./-]+$"
+          },
+          "expiry": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "expiration": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "resolve": {
+            "default": {
+              "spot": true,
+              "sigma": true,
+              "sigmaSource": "auto",
+              "dividend": true,
+              "rate": true,
+              "rateMode": "matched",
+              "tenor": true,
+              "spotSource": "snapshot",
+              "calibration": false
+            },
+            "type": "object",
+            "properties": {
+              "spot": {
+                "default": true,
+                "type": "boolean"
+              },
+              "sigma": {
+                "default": true,
+                "type": "boolean"
+              },
+              "sigmaSource": {
+                "default": "auto",
+                "type": "string",
+                "enum": [
+                  "auto",
+                  "atmIv",
+                  "hv"
+                ]
+              },
+              "dividend": {
+                "default": true,
+                "type": "boolean"
+              },
+              "rate": {
+                "default": true,
+                "type": "boolean"
+              },
+              "rateMode": {
+                "default": "matched",
+                "type": "string",
+                "enum": [
+                  "matched",
+                  "fixedTenor"
+                ]
+              },
+              "rateTenor": {
+                "type": "string",
+                "enum": [
+                  "1MO",
+                  "3MO",
+                  "6MO",
+                  "1Y",
+                  "2Y",
+                  "5Y",
+                  "10Y",
+                  "30Y"
+                ]
+              },
+              "tenor": {
+                "default": true,
+                "type": "boolean"
+              },
+              "spotSource": {
+                "default": "snapshot",
+                "type": "string",
+                "enum": [
+                  "snapshot"
+                ]
+              },
+              "calibration": {
+                "default": false,
+                "type": "boolean"
+              }
+            }
+          },
           "atmIv": {
             "type": "number",
             "exclusiveMinimum": 0,
             "description": "Alias for `atmIV`. Accepted so callers can pipe the `atmIv` field from /v1/data/metrics/{symbol} or /v1/data/snapshot/{symbol} directly."
           }
         },
-        "required": [
-          "spotPrice",
-          "daysToExpiry"
-        ],
+        "required": [],
         "anyOf": [
           {
             "required": [
@@ -9199,7 +10204,7 @@
                 "exclusiveMinimum": 0
               },
               "strikes": {
-                "minItems": 3,
+                "minItems": 5,
                 "maxItems": 500,
                 "type": "array",
                 "items": {
@@ -9208,32 +10213,119 @@
                 }
               },
               "ivs": {
-                "minItems": 3,
+                "minItems": 5,
                 "maxItems": 500,
                 "type": "array",
                 "items": {
                   "type": "number",
-                  "minimum": 0
+                  "exclusiveMinimum": 0
                 }
               },
               "riskFreeRate": {
-                "default": 0.05,
                 "type": "number"
               },
               "dividendYield": {
-                "default": 0,
                 "type": "number"
               },
               "timeToExpiry": {
                 "type": "number",
                 "exclusiveMinimum": 0
+              },
+              "symbol": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 20,
+                "pattern": "^[A-Za-z0-9./-]+$"
+              },
+              "expiry": {
+                "type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              },
+              "expiration": {
+                "type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              },
+              "resolve": {
+                "default": {
+                  "spot": true,
+                  "sigma": true,
+                  "sigmaSource": "auto",
+                  "dividend": true,
+                  "rate": true,
+                  "rateMode": "matched",
+                  "tenor": true,
+                  "spotSource": "snapshot",
+                  "calibration": false
+                },
+                "type": "object",
+                "properties": {
+                  "spot": {
+                    "default": true,
+                    "type": "boolean"
+                  },
+                  "sigma": {
+                    "default": true,
+                    "type": "boolean"
+                  },
+                  "sigmaSource": {
+                    "default": "auto",
+                    "type": "string",
+                    "enum": [
+                      "auto",
+                      "atmIv",
+                      "hv"
+                    ]
+                  },
+                  "dividend": {
+                    "default": true,
+                    "type": "boolean"
+                  },
+                  "rate": {
+                    "default": true,
+                    "type": "boolean"
+                  },
+                  "rateMode": {
+                    "default": "matched",
+                    "type": "string",
+                    "enum": [
+                      "matched",
+                      "fixedTenor"
+                    ]
+                  },
+                  "rateTenor": {
+                    "type": "string",
+                    "enum": [
+                      "1MO",
+                      "3MO",
+                      "6MO",
+                      "1Y",
+                      "2Y",
+                      "5Y",
+                      "10Y",
+                      "30Y"
+                    ]
+                  },
+                  "tenor": {
+                    "default": true,
+                    "type": "boolean"
+                  },
+                  "spotSource": {
+                    "default": "snapshot",
+                    "type": "string",
+                    "enum": [
+                      "snapshot"
+                    ]
+                  },
+                  "calibration": {
+                    "default": false,
+                    "type": "boolean"
+                  }
+                }
               }
             },
             "required": [
-              "spotPrice",
               "strikes",
-              "ivs",
-              "timeToExpiry"
+              "ivs"
             ]
           },
           {
@@ -9252,12 +10344,91 @@
               "expiration": {
                 "type": "string"
               },
+              "expiry": {
+                "type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+              },
+              "resolve": {
+                "default": {
+                  "spot": true,
+                  "sigma": true,
+                  "sigmaSource": "auto",
+                  "dividend": true,
+                  "rate": true,
+                  "rateMode": "matched",
+                  "tenor": true,
+                  "spotSource": "snapshot",
+                  "calibration": false
+                },
+                "type": "object",
+                "properties": {
+                  "spot": {
+                    "default": true,
+                    "type": "boolean"
+                  },
+                  "sigma": {
+                    "default": true,
+                    "type": "boolean"
+                  },
+                  "sigmaSource": {
+                    "default": "auto",
+                    "type": "string",
+                    "enum": [
+                      "auto",
+                      "atmIv",
+                      "hv"
+                    ]
+                  },
+                  "dividend": {
+                    "default": true,
+                    "type": "boolean"
+                  },
+                  "rate": {
+                    "default": true,
+                    "type": "boolean"
+                  },
+                  "rateMode": {
+                    "default": "matched",
+                    "type": "string",
+                    "enum": [
+                      "matched",
+                      "fixedTenor"
+                    ]
+                  },
+                  "rateTenor": {
+                    "type": "string",
+                    "enum": [
+                      "1MO",
+                      "3MO",
+                      "6MO",
+                      "1Y",
+                      "2Y",
+                      "5Y",
+                      "10Y",
+                      "30Y"
+                    ]
+                  },
+                  "tenor": {
+                    "default": true,
+                    "type": "boolean"
+                  },
+                  "spotSource": {
+                    "default": "snapshot",
+                    "type": "string",
+                    "enum": [
+                      "snapshot"
+                    ]
+                  },
+                  "calibration": {
+                    "default": false,
+                    "type": "boolean"
+                  }
+                }
+              },
               "riskFreeRate": {
-                "default": 0.05,
                 "type": "number"
               },
               "dividendYield": {
-                "default": 0,
                 "type": "number"
               }
             },
@@ -9296,11 +10467,11 @@
           },
           "riskFreeRate": {
             "type": "number",
-            "description": "Optional risk-free rate assumption used during calibration. Defaults to 0.05 when omitted."
+            "description": "Optional risk-free rate used during calibration. When omitted, the API resolves it from stored market data; unresolved requests return 422 rather than using a fabricated default."
           },
           "dividendYield": {
             "type": "number",
-            "description": "Optional continuous dividend-yield assumption used during calibration. Defaults to 0 when omitted."
+            "description": "Optional continuous dividend yield used during calibration. When omitted, the API resolves it from stored market data; unresolved requests return 422 rather than using a fabricated default."
           },
           "modelParams": {
             "type": "object",
@@ -9405,7 +10576,7 @@
             "additionalProperties": {
               "type": "number"
             },
-            "description": "Per-Greek values produced as a side effect of pricing for some models (binomial returns delta/gamma; PDE production path returns delta/gamma/vega/theta/rho). Use /v1/compute/greeks for the full 17-Greek response across all models."
+            "description": "Per-Greek values produced as a side effect of pricing for some models. Binomial returns delta/gamma. The default numerical PDE path returns delta/gamma/theta; an enhanced-control PDE request may return only price. Vega and rho are absent from numerical PDE pricing because that solve does not measure them. An analytical PDE fallback can return vega/rho and is identified in `warnings`. Use /v1/compute/greeks for the full 17-Greek response across all models."
           },
           "mcStats": {
             "$ref": "#/components/schemas/McStats"
@@ -9435,7 +10606,7 @@
             "items": {
               "type": "string"
             },
-            "description": "Resolution warnings emitted during ticker auto-fill"
+            "description": "Non-fatal notices, including ticker-resolution warnings and disclosure that a requested numerical model used an analytical fallback."
           }
         },
         "additionalProperties": false
@@ -9659,7 +10830,7 @@
           },
           "theta": {
             "type": "number",
-            "description": "dP/dt (per day)"
+            "description": "dP/dt (per day - see `dayCount`)"
           },
           "rho": {
             "type": "number",
@@ -9679,7 +10850,7 @@
           },
           "charm": {
             "type": "number",
-            "description": "d²P/dSdt (delta decay)"
+            "description": "d²P/dSdt (delta decay, PER DAY - see `dayCount`)"
           },
           "vomma": {
             "type": "number",
@@ -9687,7 +10858,7 @@
           },
           "veta": {
             "type": "number",
-            "description": "d²P/dσdt (vega decay)"
+            "description": "d²P/dσdt (vega decay, per 1% vol change PER DAY - see `dayCount`)"
           },
           "speed": {
             "type": "number",
@@ -9699,7 +10870,7 @@
           },
           "color": {
             "type": "number",
-            "description": "d³P/dS²dt (gamma decay)"
+            "description": "d³P/dS²dt (gamma decay, PER DAY - see `dayCount`)"
           },
           "ultima": {
             "type": "number",
@@ -9707,7 +10878,7 @@
           },
           "dcharmDvol": {
             "type": "number",
-            "description": "d³P/dSdtdσ (charm sensitivity to vol)"
+            "description": "d³P/dSdtdσ (charm sensitivity to vol, PER DAY - see `dayCount`)"
           },
           "lambda": {
             "type": "number",
@@ -9731,7 +10902,7 @@
             "items": {
               "type": "string"
             },
-            "description": "Resolution warnings emitted during ticker auto-fill"
+            "description": "Non-fatal notices about this response, including ticker auto-fill, numerical-accuracy limitations or analytical fallback, and the Greek convention layer reporting a non-finite Greek that was published as 0."
           }
         },
         "additionalProperties": false
@@ -9927,6 +11098,9 @@
               "$ref": "#/components/schemas/ExposureStrike"
             },
             "description": "Top-10 strikes by absolute net gamma"
+          },
+          "resolved": {
+            "$ref": "#/components/schemas/ResolvedSummary"
           }
         },
         "additionalProperties": false
@@ -9947,6 +11121,9 @@
             "items": {
               "$ref": "#/components/schemas/ExposureStrike"
             }
+          },
+          "resolved": {
+            "$ref": "#/components/schemas/ResolvedSummary"
           }
         },
         "additionalProperties": false
@@ -10009,11 +11186,20 @@
       "ScenarioResponse": {
         "type": "object",
         "required": [
+          "model",
           "spotChanges",
           "volChanges",
           "matrix"
         ],
         "properties": {
+          "model": {
+            "type": "string",
+            "enum": [
+              "bs",
+              "binomial"
+            ],
+            "description": "Model used for the matrix. `bs` (European Black-Scholes) unless `model: \"binomial\"` was requested."
+          },
           "spotChanges": {
             "type": "array",
             "items": {
@@ -10035,13 +11221,16 @@
               }
             },
             "description": "2D matrix of structured cells indexed by [spotChange][volChange]."
+          },
+          "resolved": {
+            "$ref": "#/components/schemas/ResolvedSummary"
           }
         },
         "additionalProperties": false
       },
       "SensitivityResponse": {
         "type": "object",
-        "description": "Per-axis sweep of Greeks. Each point carries the full 17-Greek set under Black-Scholes (model defaults to \"bs\"). When `model: \"heston\"`, points additionally carry a `modelGreeks` block with derivatives w.r.t. the Heston parameters (V0, kappa, theta, volOfVol, rho).",
+        "description": "Per-axis sweep of Greeks. Each point carries the full 17-Greek set under Black-Scholes (model defaults to \"bs\"). When `model: \"heston\"`, points additionally carry a `modelGreeks` block with derivatives w.r.t. the Heston parameters (V0, kappa, theta, volOfVol, rho). When `model: \"binomial\"`, each point carries `price`, `delta`, and `gamma` only.",
         "required": [
           "axis",
           "model",
@@ -10060,7 +11249,8 @@
             "type": "string",
             "enum": [
               "bs",
-              "heston"
+              "heston",
+              "binomial"
             ],
             "description": "Model used for the sweep."
           },
@@ -10069,13 +11259,16 @@
             "items": {
               "$ref": "#/components/schemas/SensitivityPoint"
             }
+          },
+          "resolved": {
+            "$ref": "#/components/schemas/ResolvedSummary"
           }
         },
         "additionalProperties": false
       },
       "SensitivityPoint": {
         "type": "object",
-        "description": "One point on a sensitivity sweep. `x` is the sweep variable (spot price for axis=\"spot\", days-to-expiry for \"time\", volatility for \"volatility\"). The standard 17 Greeks come from Black-Scholes; `modelGreeks` is present only when `model: \"heston\"`.",
+        "description": "One point on a sensitivity sweep. `x` is the sweep variable (spot price for axis=\"spot\", days-to-expiry for \"time\", volatility for \"volatility\"). The standard 17 Greeks come from Black-Scholes; `modelGreeks` is present only when `model: \"heston\"`. Under `model: \"binomial\"` only `price`, `delta`, and `gamma` are populated.",
         "required": [
           "x"
         ],
@@ -10178,6 +11371,214 @@
         },
         "additionalProperties": false
       },
+      "StrategyLeg": {
+        "type": "object",
+        "description": "One priced leg of the strategy. Option legs carry `strike`, `model`, and `premium` (per share); stock legs carry `costBasis` (per share). `greeks` are per-contract for options and `{ delta: 1 }` for stock.",
+        "required": [
+          "type",
+          "side",
+          "quantity",
+          "greeks"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "call",
+              "put",
+              "stock"
+            ]
+          },
+          "side": {
+            "type": "string",
+            "enum": [
+              "long",
+              "short"
+            ]
+          },
+          "quantity": {
+            "type": "number"
+          },
+          "strike": {
+            "type": "number"
+          },
+          "model": {
+            "type": "string",
+            "enum": [
+              "bs",
+              "binomial"
+            ]
+          },
+          "premium": {
+            "type": "number",
+            "description": "Per-share option premium used — supplied by the caller or computed by the model."
+          },
+          "costBasis": {
+            "type": "number",
+            "description": "Per-share cost basis for a stock leg (defaults to the shared spot)."
+          },
+          "greeks": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number"
+            },
+            "description": "Per-contract Greeks for option legs; `{ delta: 1 }` for stock."
+          }
+        },
+        "additionalProperties": false
+      },
+      "StrategyProfitZone": {
+        "type": "object",
+        "required": [
+          "type",
+          "breakevens"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "One of: above, below, between, outside, always_profit, always_loss, complex, unknown."
+          },
+          "breakevens": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          },
+          "profitIntervals": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              }
+            },
+            "description": "Profitable price bands [lo, hi] for disjoint (complex) zones. A null endpoint means unbounded on that side (0 low / +inf high)."
+          }
+        },
+        "additionalProperties": false
+      },
+      "StrategyPayoffPoint": {
+        "type": "object",
+        "required": [
+          "price",
+          "payoff"
+        ],
+        "properties": {
+          "price": {
+            "type": "number"
+          },
+          "payoff": {
+            "type": "number",
+            "description": "Total P&L at expiry at this price (intrinsic payoff plus the initial cost)."
+          },
+          "payoffAtExpiry": {
+            "type": "number"
+          }
+        },
+        "additionalProperties": false
+      },
+      "StrategyResponse": {
+        "type": "object",
+        "description": "Net cost, position-level net Greeks, risk metrics, and a payoff-at-expiry curve for a multi-leg strategy. Unbounded profit/loss and an unbounded risk/reward ratio are reported as null (JSON has no Infinity); the `unbounded` flags say which.",
+        "required": [
+          "legs",
+          "initialCost",
+          "netGreeks",
+          "maxProfit",
+          "maxLoss",
+          "unbounded",
+          "breakevens",
+          "profitZone",
+          "riskRewardRatio",
+          "probabilityOfProfit",
+          "payoffCurve"
+        ],
+        "properties": {
+          "legs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StrategyLeg"
+            }
+          },
+          "initialCost": {
+            "type": "number",
+            "description": "Net cash flow to establish the position: negative = net debit paid, positive = net credit received. Options are x100/contract; stock is x shares."
+          },
+          "netGreeks": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number"
+            },
+            "description": "Position-level (share-equivalent) net Greeks: an option leg contributes signedQty x 100 x per-contract Greek; a stock leg contributes signedQty to delta. Short legs are negative. Excludes `lambda` (leverage is a ratio, not additive) — see each leg`s `greeks` for its lambda."
+          },
+          "maxProfit": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Maximum profit, or null when unbounded (see `unbounded.maxProfit`)."
+          },
+          "maxLoss": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Maximum loss (most negative P&L), or null when unbounded."
+          },
+          "unbounded": {
+            "type": "object",
+            "required": [
+              "maxProfit",
+              "maxLoss"
+            ],
+            "properties": {
+              "maxProfit": {
+                "type": "boolean"
+              },
+              "maxLoss": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          },
+          "breakevens": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          },
+          "profitZone": {
+            "$ref": "#/components/schemas/StrategyProfitZone"
+          },
+          "riskRewardRatio": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "maxProfit / |maxLoss|; null when maxLoss is 0 or unbounded."
+          },
+          "probabilityOfProfit": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Lognormal probability of finishing in a profit zone; null unless sigma and tenor are known."
+          },
+          "payoffCurve": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StrategyPayoffPoint"
+            }
+          },
+          "resolved": {
+            "$ref": "#/components/schemas/ResolvedSummary"
+          }
+        },
+        "additionalProperties": false
+      },
       "MaxPainResponse": {
         "type": "object",
         "properties": {
@@ -10242,6 +11643,9 @@
           },
           "ivApproxMove": {
             "type": "number"
+          },
+          "resolved": {
+            "$ref": "#/components/schemas/ResolvedSummary"
           }
         }
       },
@@ -10280,27 +11684,34 @@
                 }
               },
               "stats": {
-                "type": "object",
-                "properties": {
-                  "impliedMove": {
-                    "type": "number"
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "impliedMove": {
+                        "type": "number"
+                      },
+                      "movePercent": {
+                        "type": "number"
+                      },
+                      "lower": {
+                        "type": "number"
+                      },
+                      "upper": {
+                        "type": "number"
+                      },
+                      "fairValue": {
+                        "type": "number"
+                      },
+                      "stdDev": {
+                        "type": "number"
+                      }
+                    }
                   },
-                  "movePercent": {
-                    "type": "number"
-                  },
-                  "lower": {
-                    "type": "number"
-                  },
-                  "upper": {
-                    "type": "number"
-                  },
-                  "fairValue": {
-                    "type": "number"
-                  },
-                  "stdDev": {
-                    "type": "number"
+                  {
+                    "type": "null"
                   }
-                }
+                ]
               },
               "method": {
                 "type": "string",
@@ -10348,24 +11759,31 @@
                 }
               },
               "stats": {
-                "type": "object",
-                "properties": {
-                  "move": {
-                    "type": "number"
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "move": {
+                        "type": "number"
+                      },
+                      "movePercent": {
+                        "type": "number"
+                      },
+                      "lower": {
+                        "type": "number"
+                      },
+                      "upper": {
+                        "type": "number"
+                      },
+                      "expectedValue": {
+                        "type": "number"
+                      }
+                    }
                   },
-                  "movePercent": {
-                    "type": "number"
-                  },
-                  "lower": {
-                    "type": "number"
-                  },
-                  "upper": {
-                    "type": "number"
-                  },
-                  "expectedValue": {
-                    "type": "number"
+                  {
+                    "type": "null"
                   }
-                }
+                ]
               }
             }
           },
@@ -10390,6 +11808,9 @@
           },
           "dividendYield": {
             "type": "number"
+          },
+          "resolved": {
+            "$ref": "#/components/schemas/ResolvedSummary"
           }
         }
       },
@@ -10437,11 +11858,11 @@
             "properties": {
               "ivRmse": {
                 "type": "number",
-                "description": "Aggregate IV RMSE across all options used for the fit."
+                "description": "Aggregate IV RMSE across the options the fit was computed from. A calibration that does not converge returns a 422 `CALIBRATION_FAILED` rather than an `ivRmse` of 0 next to unfitted parameters."
               },
               "nOptions": {
                 "type": "integer",
-                "description": "Number of options included in the fit."
+                "description": "Number of usable observations admitted by the selected calibrator. This can differ from the submitted chain count: Heston requires a supplied IV in its accepted range; SABR, variance-gamma and jump-diffusion can derive IV from a usable option price; and local-vol/eSSVI deduplicates call/put observations at the same expiry and strike."
               }
             },
             "additionalProperties": false
@@ -11753,6 +13174,16 @@
       },
       "HealthResponse": {
         "type": "object",
+        "required": [
+          "status",
+          "service",
+          "version",
+          "uptime",
+          "timestamp",
+          "workerPool",
+          "redis",
+          "rejections"
+        ],
         "properties": {
           "status": {
             "type": "string",
@@ -11773,8 +13204,130 @@
           "timestamp": {
             "type": "string",
             "format": "date-time"
+          },
+          "workerPool": {
+            "description": "Current compute-worker capacity. Null means heavy computations have no worker pool and may use their documented fallback path.",
+            "anyOf": [
+              {
+                "type": "object",
+                "required": [
+                  "size",
+                  "ready",
+                  "busy",
+                  "queued",
+                  "degraded"
+                ],
+                "properties": {
+                  "size": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "ready": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "busy": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "queued": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "degraded": {
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "redis": {
+            "description": "Redis connectivity. When Redis is down, the rate limiter and concurrency caps fall back to per-process memory and stop being global across replicas; response caching is bypassed.",
+            "type": "object",
+            "required": [
+              "configured",
+              "connected",
+              "state",
+              "consecutiveCommandFailures",
+              "lastCommandFailureAt"
+            ],
+            "properties": {
+              "configured": {
+                "type": "boolean"
+              },
+              "connected": {
+                "type": "boolean"
+              },
+              "state": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "consecutiveCommandFailures": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "lastCommandFailureAt": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
+              }
+            },
+            "additionalProperties": false
+          },
+          "rejections": {
+            "description": "Per-process refusal counters since startup. The path breakdown is capped; overflowed=true means totals remain complete but byBucket is partial.",
+            "type": "object",
+            "required": [
+              "byStatus",
+              "byBucket",
+              "total",
+              "overflowed",
+              "lastAt"
+            ],
+            "properties": {
+              "byStatus": {
+                "type": "object",
+                "maxProperties": 3,
+                "additionalProperties": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "byBucket": {
+                "type": "object",
+                "maxProperties": 500,
+                "additionalProperties": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "total": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "overflowed": {
+                "type": "boolean"
+              },
+              "lastAt": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 0
+              }
+            },
+            "additionalProperties": false
           }
-        }
+        },
+        "additionalProperties": false
       },
       "ValidationError": {
         "type": "object",

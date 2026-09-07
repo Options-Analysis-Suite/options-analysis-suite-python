@@ -41,7 +41,9 @@ dev = [
   "respx>=0.20",
   "ruff>=0.5",
   "mypy>=1.8",
-  "twine>=5.0",
+  # >=7.0 understands core metadata 2.5, which hatchling >=1.32 emits by default.
+  # twine 6.x rejected our own wheel with "'2.5' is not a valid metadata version".
+  "twine>=7.0",
 ]
 codegen = [
   "datamodel-code-generator>=0.26",

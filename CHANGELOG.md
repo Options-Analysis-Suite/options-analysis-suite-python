@@ -13,6 +13,22 @@ out in this file with **Breaking** at the start of the bullet.
 
 ## [Unreleased]
 
+### Added
+
+- `client.strategy(legs=[...], ...)` for the multi-leg strategy endpoint
+  (`POST /v1/compute/strategy`): net cost, position-level net Greeks, max
+  profit/loss, breakevens, profit zone, probability of profit, and a
+  payoff-at-expiry curve in one call. Legs are passed as wire-shaped dicts
+  (`type`, `side`, `quantity`, `strike`, `model`, `premium`, `costBasis`, plus
+  per-leg `sigma` / `t` / `isAmerican` / `steps` / `modelParams` overrides).
+- Regenerated models for the current API contract: `ScenarioResponse` and
+  `SensitivityResponse` now carry `model` (`bs` or `binomial`), and the
+  `Strategy*` models are new.
+- `SchwabCredentials(refresh_token=..., client_id=..., client_secret=...)` BYOK
+  helper for Charles Schwab, alongside `TradierCredentials` and
+  `TastytradeCredentials`. Works with the calibration and full-mode probability
+  endpoints; any Schwab app with market-data access is sufficient.
+
 ## [1.0.1] (2026-07-12)
 
 ### Changed

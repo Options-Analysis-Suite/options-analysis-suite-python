@@ -11,11 +11,12 @@ the URL parameters directly.
 
 Return types: methods backed by tightened response schemas (snapshot,
 metrics, price, greeks, exposure, calibrate, history, IV surface, expected
-move, max pain, scenario, sensitivity, probability, regime/current) return
-Pydantic v2 models from :mod:`oas._generated.models`. Methods backed by
-loose schemas — the generic ``ListResponse`` wrapper and several
-vendor-passthrough endpoints (company_profile, fundamentals, earnings,
-analysts, insiders, company_data, fred, fail_to_deliver, threshold_history,
+move, max pain, scenario, sensitivity, strategy, probability,
+regime/current) return Pydantic v2 models from
+:mod:`oas._generated.models`. Methods backed by loose schemas — the generic
+``ListResponse`` wrapper and several vendor-passthrough endpoints
+(company_profile, fundamentals, earnings, analysts, insiders, company_data,
+fred, fail_to_deliver, threshold_history,
 snapshot_market) — return ``dict[str, Any]`` so callers see the full
 server payload (including top-level metadata like ``date``/``page``/``count``
 that ``ListResponse`` would have dropped). These will tighten to typed
@@ -58,6 +59,7 @@ from oas._generated.models import (
     ScenarioResponse,
     SensitivityResponse,
     SnapshotResponse,
+    StrategyResponse,
 )
 from oas._transport import Transport
 from oas.calibration import Calibration
@@ -406,6 +408,66 @@ class OASClient:
         })
         body = self._transport.request("POST", "/v1/compute/sensitivity", json=payload)
         return SensitivityResponse.model_validate(body)
+
+    def strategy(
+        self,
+        *,
+        legs: list[dict[str, Any]],
+        S: float | None = None,
+        r: float | None = None,
+        q: float | None = None,
+        sigma: float | None = None,
+        t: float | None = None,
+        symbol: str | None = None,
+        expiry: str | None = None,
+        expiration: str | None = None,
+        resolve: dict[str, Any] | None = None,
+        num_points: int | None = None,
+        price_range_pct: float | None = None,
+    ) -> StrategyResponse:
+        """Price a multi-leg strategy in one call (operationId ``compute.strategy``).
+
+        Returns the net cost to establish the position, position-level net
+        Greeks, max profit / max loss, breakevens, the profit zone, risk/reward,
+        probability of profit, and a payoff-at-expiry curve. Each option leg is
+        priced through the same model dispatcher as :meth:`price` and
+        :meth:`greeks`.
+
+        Args:
+            legs: Wire-shaped leg dicts. ``type`` (``call`` / ``put`` /
+                ``stock``) and ``side`` (``long`` / ``short``) are required;
+                ``quantity`` defaults to 1 (contracts for options, shares for
+                stock). Option legs take ``strike``, and optionally ``premium``
+                (per share, to value at an observed market price instead of the
+                model), ``model`` (``bs`` or ``binomial``), ``isAmerican``,
+                ``steps``, ``modelParams``, and per-leg ``sigma`` / ``t``
+                overrides for a skew or a diagonal. Stock legs take
+                ``costBasis`` (per share, defaults to the shared spot). Keys are
+                camelCase as on the wire; they are sent through unchanged.
+            S, r, q, sigma, t: Shared underlying inputs. Legs inherit ``sigma``
+                and ``t`` unless they override them.
+            symbol, expiry, expiration, resolve: Let the server resolve spot,
+                sigma, dividend, and rate from market data for ``symbol``
+                instead of supplying them; ``resolve`` is the per-field toggle
+                object from the API docs. The response then carries
+                ``resolved`` describing what was filled in.
+            num_points: Points on the payoff curve (10-500).
+            price_range_pct: Half-width of the payoff curve's spot range as a
+                decimal fraction of spot (0 < x <= 2).
+
+        Returns:
+            :class:`StrategyResponse`. Unbounded max profit / loss come back as
+            ``None`` with the matching ``unbounded`` flag set, since JSON cannot
+            carry infinity.
+        """
+        payload = _drop_none({
+            "S": S, "r": r, "q": q, "sigma": sigma, "t": t,
+            "symbol": symbol, "expiry": expiry, "expiration": expiration,
+            "resolve": resolve, "legs": legs,
+            "numPoints": num_points, "priceRangePct": price_range_pct,
+        })
+        body = self._transport.request("POST", "/v1/compute/strategy", json=payload)
+        return StrategyResponse.model_validate(body)
 
     def max_pain(self, *, strikes: list[dict[str, Any]]) -> MaxPainResponse:
         """Compute the max-pain strike from per-strike OI (operationId ``compute.maxPain``)."""

@@ -34,6 +34,7 @@ ENDPOINTS: dict[str, Endpoint] = {
     "compute.exposure":      Endpoint("POST", "/v1/compute/exposure", "exposure"),
     "compute.scenario":      Endpoint("POST", "/v1/compute/scenario", "scenario"),
     "compute.sensitivity":   Endpoint("POST", "/v1/compute/sensitivity", "sensitivity"),
+    "compute.strategy":      Endpoint("POST", "/v1/compute/strategy", "strategy"),
     "compute.maxPain":       Endpoint("POST", "/v1/compute/max-pain", "max_pain"),
     "compute.expectedMove":  Endpoint("POST", "/v1/compute/expected-move", "expected_move"),
     "compute.probability":   Endpoint("POST", "/v1/compute/probability", "probability"),

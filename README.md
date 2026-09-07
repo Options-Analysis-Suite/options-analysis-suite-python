@@ -20,7 +20,7 @@ pip install options-analysis-suite
 ## Quickstart
 
 ```python
-from oas import OASClient, TradierCredentials
+from oas import OASClient, SchwabCredentials, TastytradeCredentials, TradierCredentials
 
 with OASClient(api_key="oas_live_...") as client:
     # Data: cached EOD analytics
@@ -41,6 +41,8 @@ with OASClient(api_key="oas_live_...") as client:
     cal = client.calibrate(
         "SPY", model="heston",
         broker=TradierCredentials(token="..."),
+        # Or TastytradeCredentials(refresh_token=..., client_secret=...)
+        # or SchwabCredentials(refresh_token=..., client_id=..., client_secret=...)
     )
     cal.save("spy_heston.json")
 

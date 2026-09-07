@@ -123,12 +123,49 @@ def relax_nullable_required_fields(output_path: Path) -> int:
     return n
 
 
-def main() -> int:
+def normalize_generated_header(output_path: Path) -> None:
+    """Remove run-specific input names and timestamps from generated output.
+
+    Without this pass, identical specs produce a dirty tracked file on every
+    invocation, making a CI reproducibility check impossible.
+    """
+    src = output_path.read_text()
+    normalized, filename_count = re.subn(
+        r"(?m)^#   filename: .+$",
+        "#   filename: openapi.json",
+        src,
+    )
+    normalized, timestamp_count = re.subn(
+        r"(?m)^#   timestamp: .+\n",
+        "",
+        normalized,
+    )
+    if filename_count != 1 or timestamp_count != 1:
+        raise RuntimeError(
+            "datamodel-codegen header format changed; cannot normalize generated output"
+        )
+    output_path.write_text(normalized)
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--url", default=os.environ.get("OAS_OPENAPI_URL", DEFAULT_URL),
                    help="URL to fetch OpenAPI spec from (default: deployed prod)")
-    p.add_argument("--input", help="Local OpenAPI JSON file (overrides --url)")
-    args = p.parse_args()
+    # `OAS_OPENAPI_PATH` was documented in this module's docstring as the
+    # local-file escape hatch but was never read, so `OAS_OPENAPI_PATH=... make
+    # gen` silently regenerated against the DEPLOYED spec instead. That is the
+    # worst possible failure for this script: it succeeds, prints "Generated",
+    # and produces models describing a server the developer is not running.
+    # Caught while regenerating for an undeployed spec change - the new
+    # response fields were simply absent from the output.
+    p.add_argument("--input", default=os.environ.get("OAS_OPENAPI_PATH"),
+                   help="Local OpenAPI JSON file (overrides --url). "
+                        "Also settable via OAS_OPENAPI_PATH.")
+    return p.parse_args(argv)
+
+
+def main() -> int:
+    args = parse_args()
 
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
 
@@ -149,6 +186,7 @@ def main() -> int:
 
     relaxed = relax_extra_forbid(OUTPUT)
     nulled = relax_nullable_required_fields(OUTPUT)
+    normalize_generated_header(OUTPUT)
     print(f"Generated {OUTPUT}")
     print(f"Relaxed extra='forbid' → 'ignore' on {relaxed} model classes for forward-compat")
     print(f"Defaulted nullable Field(...) → Field(None) on {nulled} fields for forward-compat")

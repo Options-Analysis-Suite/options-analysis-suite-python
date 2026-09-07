@@ -16,13 +16,19 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 
-# uv lockfile — this is a PyPI library, not an application;
-# version constraints live in pyproject.toml.
-uv.lock
-
 # IDE
 .vscode/
 .idea/
 
 # OS
 .DS_Store
+
+# uv.lock is committed for reproducible CI and model generation. It does not
+# constrain dependencies installed by SDK consumers from the wheel/sdist;
+# those ranges remain defined by pyproject.toml.
+
+# Transient OpenAPI document written by the CI drift check
+# (.github/workflows/sdk-python-ci.yml) and by anyone reproducing it locally.
+# It is derived from buildOpenApiSpec() on every run and must never be
+# committed alongside the pinned fixture it is compared against.
+.openapi.current.json

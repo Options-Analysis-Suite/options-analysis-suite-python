@@ -9,10 +9,9 @@ from typing import Any
 
 import pytest
 
-# Pinned fixture committed to the repo. Refresh via:
-#   curl -s https://data.optionsanalysissuite.com/openapi.json \
-#     > tests/fixtures/openapi.snapshot.json
-# (or set OAS_OPENAPI_PATH=- to skip the file lookup and fetch live).
+# Pinned repo-derived fixture. SDK CI builds `buildOpenApiSpec()` and requires
+# this file plus the generated models to match it. Set OAS_OPENAPI_PATH=- to
+# skip the file lookup and fetch the deployed contract for a live drift check.
 SNAPSHOT_PATH = Path(__file__).parent / "fixtures" / "openapi.snapshot.json"
 LIVE_OPENAPI_URL = "https://data.optionsanalysissuite.com/openapi.json"
 

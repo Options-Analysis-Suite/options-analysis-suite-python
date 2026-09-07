@@ -16,6 +16,7 @@ from oas.calibration import Calibration
 from oas.client import OASClient
 from oas.credentials import (
     BrokerCredentials,
+    SchwabCredentials,
     TastytradeCredentials,
     TradierCredentials,
 )
@@ -42,6 +43,7 @@ __all__ = [
     "BrokerCredentials",
     "TradierCredentials",
     "TastytradeCredentials",
+    "SchwabCredentials",
     "OASError",
     "AuthenticationError",
     "ValidationError",

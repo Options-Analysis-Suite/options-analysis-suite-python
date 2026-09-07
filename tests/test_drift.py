@@ -5,8 +5,9 @@ those tagged for non-typed-client surfaces) has a registered SDK method in
 ``oas._manifest.ENDPOINTS``. We also check the inverse: nothing in the
 manifest claims to cover a path that no longer exists in the spec.
 
-Run offline by setting ``OAS_OPENAPI_PATH`` to a local spec file; otherwise
-the ``openapi_spec`` fixture fetches deployed prod.
+The ``openapi_spec`` fixture uses the committed repo-derived snapshot by
+default. Set ``OAS_OPENAPI_PATH`` to another local file, or to ``-`` to fetch
+the deployed contract explicitly.
 
 Note: until ``OASClient`` exposes every operationId, the strict-equality
 test below is marked ``xfail(strict=False)``. Step 5 of the SDK build (filling

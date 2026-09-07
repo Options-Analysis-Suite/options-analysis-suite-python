@@ -9,10 +9,11 @@ RUFF := .venv/bin/ruff
 MYPY := .venv/bin/mypy
 
 install:
-	uv venv --python 3.12 .venv
-	uv pip install --python .venv -e ".[dev,codegen]"
+	uv venv --python 3.12 --allow-existing .venv
+	uv sync --locked --all-extras --python $(PY)
 
-# Re-derive Pydantic models from the live OpenAPI spec. Requires datamodel-codegen.
+# Re-derive Pydantic models from OAS_OPENAPI_PATH when set, otherwise deployed
+# OpenAPI. Requires datamodel-codegen.
 gen:
 	$(PY) scripts/gen_models.py
 
@@ -28,8 +29,7 @@ test:
 	$(PYTEST) -m "not live" -v
 
 # Integration test against the deployed API. Requires OAS_API_KEY in env.
-# Also runs the fixture-freshness check that diffs the pinned snapshot against
-# the live /openapi.json — refresh tests/fixtures/openapi.snapshot.json if it fails.
+# Also compares deployed operationIds with the repo-derived pinned contract.
 test-live:
 	$(PYTEST) -m live -v
 

@@ -152,10 +152,80 @@ def test_exposure_full_allows_missing_abs_gamma_for_backward_compat() -> None:
 
 
 @respx.mock
+def test_strategy_sends_camelcase_and_passes_legs_through() -> None:
+    """strategy() renames its own kwargs to camelCase but leaves leg dicts as
+    given, since they are already wire-shaped. Pins both halves, plus the
+    typed response with an unbounded side reported as None + flag.
+
+    Selected values below were captured from the data-api route
+    (computeStrategyMetrics through /v1/compute/strategy) for exactly the
+    request this test sends - a naked short call. The fixture retains
+    representative Greek fields and three of the ten payoff points, with floats
+    rounded. A naked short call is the right
+    fixture for the None + flag shape: profit is capped at the premium received
+    and loss is unbounded. (A covered call, the obvious first choice, is bounded
+    on BOTH sides - the payoff-curve range caps the downside - so a mock that
+    flags its loss as unbounded validates against the model yet describes a
+    response the API would never send.)
+    """
+    route = respx.post("https://data.optionsanalysissuite.com/v1/compute/strategy").mock(
+        return_value=Response(200, json={
+            "legs": [{
+                "type": "call", "side": "short", "strike": 105.0, "quantity": 1,
+                "model": "bs", "premium": 1.1621,
+                "greeks": {"delta": 0.2722, "gamma": 0.046, "vega": 0.0958, "theta": -0.0415},
+            }],
+            "initialCost": 116.21,
+            "netGreeks": {"delta": -27.22, "gamma": -4.599, "vega": -9.578, "theta": 4.149},
+            "maxProfit": 116.21,
+            "maxLoss": None,
+            "unbounded": {"maxProfit": False, "maxLoss": True},
+            "breakevens": [104.8828],
+            "profitZone": {"type": "below", "breakevens": [104.8828]},
+            "riskRewardRatio": None,
+            "probabilityOfProfit": 0.7461,
+            "payoffCurve": [
+                {"price": 70.0, "payoff": 116.21, "payoffAtExpiry": 116.21},
+                {"price": 103.3333, "payoff": 116.21, "payoffAtExpiry": 116.21},
+                {"price": 130.0, "payoff": -2383.79, "payoffAtExpiry": -2383.79},
+            ],
+        })
+    )
+
+    legs = [{"type": "call", "side": "short", "quantity": 1, "strike": 105}]
+    with OASClient(api_key="oas_test_xyz") as client:
+        result = client.strategy(
+            legs=legs, S=100.0, r=0.04, q=0.01, sigma=0.25, t=0.0833,
+            num_points=10, price_range_pct=0.3,
+        )
+
+    sent = json.loads(route.calls.last.request.content)
+    assert sent["numPoints"] == 10
+    assert sent["priceRangePct"] == 0.3
+    assert "num_points" not in sent and "price_range_pct" not in sent
+    assert sent["legs"] == legs
+    # None-valued kwargs are dropped, not sent as null.
+    assert "symbol" not in sent and "resolve" not in sent
+
+    # Short call: credit received, profit capped at that credit, loss open-ended.
+    assert result.initialCost == 116.21
+    assert result.maxProfit == 116.21 and result.unbounded.maxProfit is False
+    assert result.maxLoss is None and result.unbounded.maxLoss is True
+    assert result.riskRewardRatio is None
+    assert result.profitZone.type == "below"
+    assert result.legs[0].premium == 1.1621
+    assert result.netGreeks["delta"] < 0
+    assert [p.price for p in result.payoffCurve] == [70.0, 103.3333, 130.0]
+
+
+@respx.mock
 def test_scenario_matrix_returns_typed_cells() -> None:
     """Scenario matrix cells are structured objects, not bare floats."""
     respx.post("https://data.optionsanalysissuite.com/v1/compute/scenario").mock(
         return_value=Response(200, json={
+            # `model` became required on ScenarioResponse when the endpoint
+            # grew binomial support; the API always reports which one ran.
+            "model": "bs",
             "spotChanges": [-0.05, 0.0, 0.05],
             "volChanges": [-0.1, 0.0, 0.1],
             "matrix": [[{

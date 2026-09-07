@@ -15,20 +15,22 @@ make lint
 make typecheck
 make test         # unit + drift, no network. Uses tests/fixtures/openapi.snapshot.json
 make test-live    # integration (needs OAS_API_KEY env var). Also re-checks the
-                  # pinned spec fixture against the deployed /openapi.json.
+                  # pinned operationId set against deployed /openapi.json.
 
 # Build distribution
 make build
 
-# Regenerate Pydantic models from the live OpenAPI spec
+# Regenerate Pydantic models (OAS_OPENAPI_PATH selects a local contract)
 make gen
 ```
 
-Refresh the pinned spec fixture with:
+Refresh the repo-derived fixture and models from the monorepo root with:
 
 ```bash
-curl -s https://data.optionsanalysissuite.com/openapi.json \
-  > tests/fixtures/openapi.snapshot.json
+cd ../..
+bun -e 'import { buildOpenApiSpec } from "./data-api/openapi/spec.ts"; await Bun.write("sdk/python/tests/fixtures/openapi.snapshot.json", JSON.stringify(buildOpenApiSpec(), null, 2) + "\n");'
+cd sdk/python
+OAS_OPENAPI_PATH=tests/fixtures/openapi.snapshot.json make gen
 ```
 
 ## Drift gate
@@ -45,8 +47,7 @@ pairing. `tests/test_drift.py` runs four checks against the spec:
 
 The `EXPECTED_MISSING_OPERATION_IDS` allowlist is **empty**; the SDK
 covers every typed operation. The `live` test suite double-checks that
-the pinned `tests/fixtures/openapi.snapshot.json` still matches deployed
-prod.
+the repo-derived operationId set still matches deployed prod.
 
 ## Updating the SDK when the spec changes
 
@@ -58,7 +59,8 @@ When the upstream OpenAPI spec changes, the SDK reacts as follows:
 | **New endpoint** (new operationId) | `tests/test_drift.py` fails the strict-gate assertion, naming the missing operationId. | Add a method to `src/oas/client.py`, add an entry to `src/oas/_manifest.py`, run `make test` until drift passes, release. |
 | **Removed / renamed endpoint** | Drift gate fails the other way; the SDK manifest references an operationId that no longer exists. | Remove the corresponding `client.py` method and `_manifest.py` entry. Bump major if the SDK had shipped that method publicly. |
 | **Schema field type change** (e.g., `atmIv: number → string`) | `make gen` regenerates with the new type; `mypy --strict` flags any callers that assumed the old type. | Fix call sites, regen, release. |
-| **Spec fixture stale** | `make test-live` fetches the deployed `/openapi.json` and compares against `tests/fixtures/openapi.snapshot.json`. | Refresh the fixture and commit. |
+| **Repo fixture/models stale** | SDK CI builds `buildOpenApiSpec()`, compares the full document to the fixture, regenerates models, and requires a clean diff. | Run the refresh commands above and commit both artifacts. |
+| **Deployment contract stale** | `make test-live` compares deployed operationIds against the repo-derived fixture. | Deploy the current data-api contract or investigate an unexpected live-only operation. |
 
 The drift gate is the forcing function; you cannot accidentally ship an
 SDK that's out of sync with the deployed API surface.
