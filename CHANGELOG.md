@@ -13,6 +13,8 @@ out in this file with **Breaking** at the start of the bullet.
 
 ## [Unreleased]
 
+## [1.1.0] (2026-09-07)
+
 ### Added
 
 - `client.strategy(legs=[...], ...)` for the multi-leg strategy endpoint
