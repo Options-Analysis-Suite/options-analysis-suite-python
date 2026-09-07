@@ -8,6 +8,8 @@ data; catch :class:`OASError` for blanket handling.
 
 from __future__ import annotations
 
+from typing import Any
+
 
 class OASError(Exception):
     """Base class for every error the OAS client raises."""
@@ -18,10 +20,14 @@ class OASError(Exception):
         *,
         status: int | None = None,
         code: str | None = None,
+        details: dict[str, Any] | None = None,
     ) -> None:
         super().__init__(message)
         self.status = status
         self.code = code
+        #: The decoded JSON error body, when the server sent one. Structured
+        #: fields the typed subclasses expose are read from here.
+        self.details: dict[str, Any] = dict(details or {})
 
 
 class AuthenticationError(OASError):
@@ -31,10 +37,24 @@ class AuthenticationError(OASError):
 class ValidationError(OASError):
     """400/422 — request body, query parameters, or resolved inputs failed validation.
 
-    The server typically includes per-field issue details in the response body;
-    they aren't surfaced as structured fields here yet. Catch and inspect
-    :attr:`OASError.args` for the raw message.
+    A ``RESOLUTION_FAILED`` 422 names the market inputs the server could not
+    resolve from the symbol and would not fabricate (most often ``q``, the
+    dividend yield, for an explicit-input call that omitted it): see
+    :attr:`missing_fields`; :attr:`warnings` carries the resolver's notes and
+    :attr:`OASError.details` the whole body.
     """
+
+    @property
+    def missing_fields(self) -> list[str]:
+        """Canonical input names the server reported as unresolved (may be empty)."""
+        raw = self.details.get("missingFields")
+        return [str(f) for f in raw] if isinstance(raw, list) else []
+
+    @property
+    def warnings(self) -> list[str]:
+        """Resolver warnings that accompanied the rejection (may be empty)."""
+        raw = self.details.get("warnings")
+        return [str(w) for w in raw] if isinstance(raw, list) else []
 
 
 class PermissionDeniedError(OASError):

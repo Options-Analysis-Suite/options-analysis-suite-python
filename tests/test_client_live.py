@@ -33,6 +33,7 @@ def test_scenario_against_live_api(api_key: str) -> None:
             S=100.0,
             K=100.0,
             r=0.05,
+            q=0.0,  # explicit-input calls must carry q: the API resolves it only from a symbol
             sigma=0.2,
             t=0.25,
             spot_changes=[-0.05, 0.0, 0.05],

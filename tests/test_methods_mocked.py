@@ -307,6 +307,11 @@ def test_semantic_422_maps_to_validation_error() -> None:
 
     assert excinfo.value.status == 422
     assert excinfo.value.code == "RESOLUTION_FAILED"
+    # The server names what it could not resolve; the SDK must not drop it.
+    assert excinfo.value.missing_fields == ["S", "sigma"]
+    assert excinfo.value.warnings == []
+    assert excinfo.value.details["missingFields"] == ["S", "sigma"]
+    assert "missing: S, sigma" in str(excinfo.value)
 
 
 @respx.mock

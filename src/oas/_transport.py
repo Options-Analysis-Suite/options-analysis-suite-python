@@ -80,7 +80,10 @@ class Transport:
         if status == 401:
             raise AuthenticationError(msg, status=status, code=code)
         if status in (400, 422):
-            raise ValidationError(msg, status=status, code=code)
+            missing = body.get("missingFields")
+            if isinstance(missing, list) and missing:
+                msg = f"{msg} (missing: {', '.join(str(f) for f in missing)})"
+            raise ValidationError(msg, status=status, code=code, details=body)
         if status == 403:
             raise PermissionDeniedError(
                 msg,

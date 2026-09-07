@@ -13,6 +13,18 @@ out in this file with **Breaking** at the start of the bullet.
 
 ## [Unreleased]
 
+## [1.1.1] (2026-09-07)
+
+### Fixed
+
+- `ValidationError` keeps the server's detail: `missing_fields` and `warnings`
+  are structured properties, `details` holds the decoded error body, and a
+  `RESOLUTION_FAILED` message now names the unresolved inputs
+  (`... (missing: q)`). Previously only the headline text survived.
+- The live scenario test supplies `q`: explicit-input calls must carry the
+  dividend yield, since the API resolves it only from a symbol and never
+  fabricates one.
+
 ## [1.1.0] (2026-09-07)
 
 ### Added
