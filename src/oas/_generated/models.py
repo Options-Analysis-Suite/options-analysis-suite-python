@@ -98,9 +98,9 @@ class ModelParams(BaseModel):
     __annotations__ = {
         '__pydantic_extra__': Dict[str, Any],
     }
-    dividends: list[Dividend] | None = Field(
+    dividends: list[Dividend] | list[float | str | None] | str | None = Field(
         None,
-        description='Discrete cash-dividend schedule for the binomial engine (model:"binomial"): a list of { time: years-to-ex-date (>0), amount: cash-per-share (>=0) }. Fixed cash amounts only (no proportional/escrowed mode). Continuous q is forced to 0 when a schedule is present, to avoid double-counting. Legacy aliases useDiscreteDividends / exDividendDates / dividendAmounts / dividendTimeUnit are also accepted; see the /v1/compute/price description.',
+        description='For model:"multiasset", per-leg continuous dividend yields as an array or CSV string; a null array entry requests ticker resolution for that leg. For model:"binomial", a discrete cash-dividend schedule: a list of { time: years-to-ex-date (>0), amount: cash-per-share (>=0) }. Fixed cash amounts only (no proportional/escrowed mode). Continuous q is forced to 0 when at least one scheduled payment falls within the life of the option, to avoid double-counting; an empty schedule, or one whose payments all fall after expiry, leaves the supplied q in place. Legacy aliases useDiscreteDividends / exDividendDates / dividendAmounts / dividendTimeUnit are also accepted; see the /v1/compute/price description.',
     )
 
 
@@ -124,9 +124,14 @@ class PriceRequest1(BaseModel):
     q: float | None = None
     sigma: confloat(ge=0.0) | None = None
     t: confloat(ge=0.0)
-    symbol: constr(pattern=r'^[A-Za-z0-9./-]+$', min_length=1, max_length=20) | None = (
-        None
-    )
+    symbol: (
+        constr(
+            pattern=r'^[A-Za-z0-9./-]*[A-Za-z0-9][A-Za-z0-9./-]*$',
+            min_length=1,
+            max_length=20,
+        )
+        | None
+    ) = None
     expiry: constr(pattern=r'^\d{4}-\d{2}-\d{2}$') | None = None
     expiration: constr(pattern=r'^\d{4}-\d{2}-\d{2}$') | None = None
     resolve: Resolve | None = Field(
@@ -181,9 +186,9 @@ class ModelParams1(BaseModel):
     __annotations__ = {
         '__pydantic_extra__': Dict[str, Any],
     }
-    dividends: list[Dividend] | None = Field(
+    dividends: list[Dividend] | list[float | str | None] | str | None = Field(
         None,
-        description='Discrete cash-dividend schedule for the binomial engine (model:"binomial"): a list of { time: years-to-ex-date (>0), amount: cash-per-share (>=0) }. Fixed cash amounts only (no proportional/escrowed mode). Continuous q is forced to 0 when a schedule is present, to avoid double-counting. Legacy aliases useDiscreteDividends / exDividendDates / dividendAmounts / dividendTimeUnit are also accepted; see the /v1/compute/price description.',
+        description='For model:"multiasset", per-leg continuous dividend yields as an array or CSV string; a null array entry requests ticker resolution for that leg. For model:"binomial", a discrete cash-dividend schedule: a list of { time: years-to-ex-date (>0), amount: cash-per-share (>=0) }. Fixed cash amounts only (no proportional/escrowed mode). Continuous q is forced to 0 when at least one scheduled payment falls within the life of the option, to avoid double-counting; an empty schedule, or one whose payments all fall after expiry, leaves the supplied q in place. Legacy aliases useDiscreteDividends / exDividendDates / dividendAmounts / dividendTimeUnit are also accepted; see the /v1/compute/price description.',
     )
 
 
@@ -196,9 +201,14 @@ class PriceRequest2(BaseModel):
     q: float | None = None
     sigma: confloat(ge=0.0) | None = None
     t: confloat(ge=0.0) | None = None
-    symbol: constr(pattern=r'^[A-Za-z0-9./-]+$', min_length=1, max_length=20) | None = (
-        None
-    )
+    symbol: (
+        constr(
+            pattern=r'^[A-Za-z0-9./-]*[A-Za-z0-9][A-Za-z0-9./-]*$',
+            min_length=1,
+            max_length=20,
+        )
+        | None
+    ) = None
     expiry: constr(pattern=r'^\d{4}-\d{2}-\d{2}$')
     expiration: constr(pattern=r'^\d{4}-\d{2}-\d{2}$') | None = None
     resolve: Resolve1 | None = Field(
@@ -253,9 +263,9 @@ class ModelParams2(BaseModel):
     __annotations__ = {
         '__pydantic_extra__': Dict[str, Any],
     }
-    dividends: list[Dividend] | None = Field(
+    dividends: list[Dividend] | list[float | str | None] | str | None = Field(
         None,
-        description='Discrete cash-dividend schedule for the binomial engine (model:"binomial"): a list of { time: years-to-ex-date (>0), amount: cash-per-share (>=0) }. Fixed cash amounts only (no proportional/escrowed mode). Continuous q is forced to 0 when a schedule is present, to avoid double-counting. Legacy aliases useDiscreteDividends / exDividendDates / dividendAmounts / dividendTimeUnit are also accepted; see the /v1/compute/price description.',
+        description='For model:"multiasset", per-leg continuous dividend yields as an array or CSV string; a null array entry requests ticker resolution for that leg. For model:"binomial", a discrete cash-dividend schedule: a list of { time: years-to-ex-date (>0), amount: cash-per-share (>=0) }. Fixed cash amounts only (no proportional/escrowed mode). Continuous q is forced to 0 when at least one scheduled payment falls within the life of the option, to avoid double-counting; an empty schedule, or one whose payments all fall after expiry, leaves the supplied q in place. Legacy aliases useDiscreteDividends / exDividendDates / dividendAmounts / dividendTimeUnit are also accepted; see the /v1/compute/price description.',
     )
 
 
@@ -268,9 +278,14 @@ class PriceRequest3(BaseModel):
     q: float | None = None
     sigma: confloat(ge=0.0) | None = None
     t: confloat(ge=0.0) | None = None
-    symbol: constr(pattern=r'^[A-Za-z0-9./-]+$', min_length=1, max_length=20) | None = (
-        None
-    )
+    symbol: (
+        constr(
+            pattern=r'^[A-Za-z0-9./-]*[A-Za-z0-9][A-Za-z0-9./-]*$',
+            min_length=1,
+            max_length=20,
+        )
+        | None
+    ) = None
     expiry: constr(pattern=r'^\d{4}-\d{2}-\d{2}$') | None = None
     expiration: constr(pattern=r'^\d{4}-\d{2}-\d{2}$')
     resolve: Resolve2 | None = Field(
@@ -329,9 +344,9 @@ class ModelParams3(BaseModel):
     __annotations__ = {
         '__pydantic_extra__': Dict[str, Any],
     }
-    dividends: list[Dividend] | None = Field(
+    dividends: list[Dividend] | list[float | str | None] | str | None = Field(
         None,
-        description='Discrete cash-dividend schedule for the binomial engine (model:"binomial"): a list of { time: years-to-ex-date (>0), amount: cash-per-share (>=0) }. Fixed cash amounts only (no proportional/escrowed mode). Continuous q is forced to 0 when a schedule is present, to avoid double-counting. Legacy aliases useDiscreteDividends / exDividendDates / dividendAmounts / dividendTimeUnit are also accepted; see the /v1/compute/price description.',
+        description='For model:"multiasset", per-leg continuous dividend yields as an array or CSV string; a null array entry requests ticker resolution for that leg. For model:"binomial", a discrete cash-dividend schedule: a list of { time: years-to-ex-date (>0), amount: cash-per-share (>=0) }. Fixed cash amounts only (no proportional/escrowed mode). Continuous q is forced to 0 when at least one scheduled payment falls within the life of the option, to avoid double-counting; an empty schedule, or one whose payments all fall after expiry, leaves the supplied q in place. Legacy aliases useDiscreteDividends / exDividendDates / dividendAmounts / dividendTimeUnit are also accepted; see the /v1/compute/price description.',
     )
 
 
@@ -344,9 +359,14 @@ class GreeksRequest1(BaseModel):
     q: float | None = None
     sigma: confloat(ge=0.0) | None = None
     t: confloat(ge=0.0)
-    symbol: constr(pattern=r'^[A-Za-z0-9./-]+$', min_length=1, max_length=20) | None = (
-        None
-    )
+    symbol: (
+        constr(
+            pattern=r'^[A-Za-z0-9./-]*[A-Za-z0-9][A-Za-z0-9./-]*$',
+            min_length=1,
+            max_length=20,
+        )
+        | None
+    ) = None
     expiry: constr(pattern=r'^\d{4}-\d{2}-\d{2}$') | None = None
     expiration: constr(pattern=r'^\d{4}-\d{2}-\d{2}$') | None = None
     resolve: Resolve3 | None = Field(
@@ -400,9 +420,9 @@ class ModelParams4(BaseModel):
     __annotations__ = {
         '__pydantic_extra__': Dict[str, Any],
     }
-    dividends: list[Dividend] | None = Field(
+    dividends: list[Dividend] | list[float | str | None] | str | None = Field(
         None,
-        description='Discrete cash-dividend schedule for the binomial engine (model:"binomial"): a list of { time: years-to-ex-date (>0), amount: cash-per-share (>=0) }. Fixed cash amounts only (no proportional/escrowed mode). Continuous q is forced to 0 when a schedule is present, to avoid double-counting. Legacy aliases useDiscreteDividends / exDividendDates / dividendAmounts / dividendTimeUnit are also accepted; see the /v1/compute/price description.',
+        description='For model:"multiasset", per-leg continuous dividend yields as an array or CSV string; a null array entry requests ticker resolution for that leg. For model:"binomial", a discrete cash-dividend schedule: a list of { time: years-to-ex-date (>0), amount: cash-per-share (>=0) }. Fixed cash amounts only (no proportional/escrowed mode). Continuous q is forced to 0 when at least one scheduled payment falls within the life of the option, to avoid double-counting; an empty schedule, or one whose payments all fall after expiry, leaves the supplied q in place. Legacy aliases useDiscreteDividends / exDividendDates / dividendAmounts / dividendTimeUnit are also accepted; see the /v1/compute/price description.',
     )
 
 
@@ -415,9 +435,14 @@ class GreeksRequest2(BaseModel):
     q: float | None = None
     sigma: confloat(ge=0.0) | None = None
     t: confloat(ge=0.0) | None = None
-    symbol: constr(pattern=r'^[A-Za-z0-9./-]+$', min_length=1, max_length=20) | None = (
-        None
-    )
+    symbol: (
+        constr(
+            pattern=r'^[A-Za-z0-9./-]*[A-Za-z0-9][A-Za-z0-9./-]*$',
+            min_length=1,
+            max_length=20,
+        )
+        | None
+    ) = None
     expiry: constr(pattern=r'^\d{4}-\d{2}-\d{2}$')
     expiration: constr(pattern=r'^\d{4}-\d{2}-\d{2}$') | None = None
     resolve: Resolve4 | None = Field(
@@ -471,9 +496,9 @@ class ModelParams5(BaseModel):
     __annotations__ = {
         '__pydantic_extra__': Dict[str, Any],
     }
-    dividends: list[Dividend] | None = Field(
+    dividends: list[Dividend] | list[float | str | None] | str | None = Field(
         None,
-        description='Discrete cash-dividend schedule for the binomial engine (model:"binomial"): a list of { time: years-to-ex-date (>0), amount: cash-per-share (>=0) }. Fixed cash amounts only (no proportional/escrowed mode). Continuous q is forced to 0 when a schedule is present, to avoid double-counting. Legacy aliases useDiscreteDividends / exDividendDates / dividendAmounts / dividendTimeUnit are also accepted; see the /v1/compute/price description.',
+        description='For model:"multiasset", per-leg continuous dividend yields as an array or CSV string; a null array entry requests ticker resolution for that leg. For model:"binomial", a discrete cash-dividend schedule: a list of { time: years-to-ex-date (>0), amount: cash-per-share (>=0) }. Fixed cash amounts only (no proportional/escrowed mode). Continuous q is forced to 0 when at least one scheduled payment falls within the life of the option, to avoid double-counting; an empty schedule, or one whose payments all fall after expiry, leaves the supplied q in place. Legacy aliases useDiscreteDividends / exDividendDates / dividendAmounts / dividendTimeUnit are also accepted; see the /v1/compute/price description.',
     )
 
 
@@ -486,9 +511,14 @@ class GreeksRequest3(BaseModel):
     q: float | None = None
     sigma: confloat(ge=0.0) | None = None
     t: confloat(ge=0.0) | None = None
-    symbol: constr(pattern=r'^[A-Za-z0-9./-]+$', min_length=1, max_length=20) | None = (
-        None
-    )
+    symbol: (
+        constr(
+            pattern=r'^[A-Za-z0-9./-]*[A-Za-z0-9][A-Za-z0-9./-]*$',
+            min_length=1,
+            max_length=20,
+        )
+        | None
+    ) = None
     expiry: constr(pattern=r'^\d{4}-\d{2}-\d{2}$') | None = None
     expiration: constr(pattern=r'^\d{4}-\d{2}-\d{2}$')
     resolve: Resolve5 | None = Field(
@@ -559,9 +589,14 @@ class ExposureRequest(BaseModel):
     spotPrice: PositiveFloat | None = None
     riskFreeRate: float | None = None
     dividendYield: float | None = None
-    symbol: constr(pattern=r'^[A-Za-z0-9./-]+$', min_length=1, max_length=20) | None = (
-        None
-    )
+    symbol: (
+        constr(
+            pattern=r'^[A-Za-z0-9./-]*[A-Za-z0-9][A-Za-z0-9./-]*$',
+            min_length=1,
+            max_length=20,
+        )
+        | None
+    ) = None
     expiry: constr(pattern=r'^\d{4}-\d{2}-\d{2}$') | None = None
     expiration: constr(pattern=r'^\d{4}-\d{2}-\d{2}$') | None = None
     resolve: Resolve6 | None = Field(
@@ -608,7 +643,7 @@ class ModelParams6(BaseModel):
     }
     dividends: list[Dividend] | None = Field(
         None,
-        description='Discrete cash-dividend schedule for the binomial engine (model:"binomial"): a list of { time: years-to-ex-date (>0), amount: cash-per-share (>=0) }. Fixed cash amounts only (no proportional/escrowed mode). Continuous q is forced to 0 when a schedule is present, to avoid double-counting. Legacy aliases useDiscreteDividends / exDividendDates / dividendAmounts / dividendTimeUnit are also accepted; see the /v1/compute/price description.',
+        description='Discrete cash-dividend schedule for the binomial engine (model:"binomial"): a list of { time: years-to-ex-date (>0), amount: cash-per-share (>=0) }. Fixed cash amounts only (no proportional/escrowed mode). Continuous q is forced to 0 when at least one scheduled payment falls within the life of the option, to avoid double-counting; an empty schedule, or one whose payments all fall after expiry, leaves the supplied q in place. Legacy aliases useDiscreteDividends / exDividendDates / dividendAmounts / dividendTimeUnit are also accepted; see the /v1/compute/price description.',
     )
 
 
@@ -620,9 +655,14 @@ class ScenarioRequest(BaseModel):
     q: float | None = None
     sigma: confloat(ge=0.0) | None = None
     t: confloat(ge=0.0) | None = None
-    symbol: constr(pattern=r'^[A-Za-z0-9./-]+$', min_length=1, max_length=20) | None = (
-        None
-    )
+    symbol: (
+        constr(
+            pattern=r'^[A-Za-z0-9./-]*[A-Za-z0-9][A-Za-z0-9./-]*$',
+            min_length=1,
+            max_length=20,
+        )
+        | None
+    ) = None
     expiry: constr(pattern=r'^\d{4}-\d{2}-\d{2}$') | None = None
     expiration: constr(pattern=r'^\d{4}-\d{2}-\d{2}$') | None = None
     resolve: Resolve7 | None = Field(
@@ -687,7 +727,7 @@ class ModelParams7(BaseModel):
     }
     dividends: list[Dividend] | None = Field(
         None,
-        description='Discrete cash-dividend schedule for the binomial engine (model:"binomial"): a list of { time: years-to-ex-date (>0), amount: cash-per-share (>=0) }. Fixed cash amounts only (no proportional/escrowed mode). Continuous q is forced to 0 when a schedule is present, to avoid double-counting. Legacy aliases useDiscreteDividends / exDividendDates / dividendAmounts / dividendTimeUnit are also accepted; see the /v1/compute/price description.',
+        description='Discrete cash-dividend schedule for the binomial engine (model:"binomial"): a list of { time: years-to-ex-date (>0), amount: cash-per-share (>=0) }. Fixed cash amounts only (no proportional/escrowed mode). Continuous q is forced to 0 when at least one scheduled payment falls within the life of the option, to avoid double-counting; an empty schedule, or one whose payments all fall after expiry, leaves the supplied q in place. Legacy aliases useDiscreteDividends / exDividendDates / dividendAmounts / dividendTimeUnit are also accepted; see the /v1/compute/price description.',
     )
 
 
@@ -720,9 +760,14 @@ class SensitivityRequest(BaseModel):
     q: float | None = None
     sigma: confloat(ge=0.0) | None = None
     t: confloat(ge=0.0) | None = None
-    symbol: constr(pattern=r'^[A-Za-z0-9./-]+$', min_length=1, max_length=20) | None = (
-        None
-    )
+    symbol: (
+        constr(
+            pattern=r'^[A-Za-z0-9./-]*[A-Za-z0-9][A-Za-z0-9./-]*$',
+            min_length=1,
+            max_length=20,
+        )
+        | None
+    ) = None
     expiry: constr(pattern=r'^\d{4}-\d{2}-\d{2}$') | None = None
     expiration: constr(pattern=r'^\d{4}-\d{2}-\d{2}$') | None = None
     resolve: Resolve8 | None = Field(
@@ -801,7 +846,7 @@ class ModelParams8(BaseModel):
     }
     dividends: list[Dividend] | None = Field(
         None,
-        description='Discrete cash-dividend schedule for the binomial engine (model:"binomial"): a list of { time: years-to-ex-date (>0), amount: cash-per-share (>=0) }. Fixed cash amounts only (no proportional/escrowed mode). Continuous q is forced to 0 when a schedule is present, to avoid double-counting. Legacy aliases useDiscreteDividends / exDividendDates / dividendAmounts / dividendTimeUnit are also accepted; see the /v1/compute/price description.',
+        description='Discrete cash-dividend schedule for the binomial engine (model:"binomial"): a list of { time: years-to-ex-date (>0), amount: cash-per-share (>=0) }. Fixed cash amounts only (no proportional/escrowed mode). Continuous q is forced to 0 when at least one scheduled payment falls within the life of the option, to avoid double-counting; an empty schedule, or one whose payments all fall after expiry, leaves the supplied q in place. Legacy aliases useDiscreteDividends / exDividendDates / dividendAmounts / dividendTimeUnit are also accepted; see the /v1/compute/price description.',
     )
 
 
@@ -826,9 +871,14 @@ class StrategyRequest(BaseModel):
     q: float | None = None
     sigma: confloat(ge=0.0) | None = None
     t: confloat(ge=0.0) | None = None
-    symbol: constr(pattern=r'^[A-Za-z0-9./-]+$', min_length=1, max_length=20) | None = (
-        None
-    )
+    symbol: (
+        constr(
+            pattern=r'^[A-Za-z0-9./-]*[A-Za-z0-9][A-Za-z0-9./-]*$',
+            min_length=1,
+            max_length=20,
+        )
+        | None
+    ) = None
     expiry: constr(pattern=r'^\d{4}-\d{2}-\d{2}$') | None = None
     expiration: constr(pattern=r'^\d{4}-\d{2}-\d{2}$') | None = None
     resolve: Resolve9 | None = Field(
@@ -882,9 +932,14 @@ class ExpectedMoveRequest1(BaseModel):
     daysToExpiry: PositiveFloat | None = None
     atmCallPrice: confloat(ge=0.0) | None = None
     atmPutPrice: confloat(ge=0.0) | None = None
-    symbol: constr(pattern=r'^[A-Za-z0-9./-]+$', min_length=1, max_length=20) | None = (
-        None
-    )
+    symbol: (
+        constr(
+            pattern=r'^[A-Za-z0-9./-]*[A-Za-z0-9][A-Za-z0-9./-]*$',
+            min_length=1,
+            max_length=20,
+        )
+        | None
+    ) = None
     expiry: constr(pattern=r'^\d{4}-\d{2}-\d{2}$') | None = None
     expiration: constr(pattern=r'^\d{4}-\d{2}-\d{2}$') | None = None
     resolve: Resolve10 | None = Field(
@@ -929,9 +984,14 @@ class ExpectedMoveRequest2(BaseModel):
     daysToExpiry: PositiveFloat | None = None
     atmCallPrice: confloat(ge=0.0) | None = None
     atmPutPrice: confloat(ge=0.0) | None = None
-    symbol: constr(pattern=r'^[A-Za-z0-9./-]+$', min_length=1, max_length=20) | None = (
-        None
-    )
+    symbol: (
+        constr(
+            pattern=r'^[A-Za-z0-9./-]*[A-Za-z0-9][A-Za-z0-9./-]*$',
+            min_length=1,
+            max_length=20,
+        )
+        | None
+    ) = None
     expiry: constr(pattern=r'^\d{4}-\d{2}-\d{2}$') | None = None
     expiration: constr(pattern=r'^\d{4}-\d{2}-\d{2}$') | None = None
     resolve: Resolve11 | None = Field(
@@ -976,9 +1036,14 @@ class ExpectedMoveRequest3(BaseModel):
     daysToExpiry: PositiveFloat | None = None
     atmCallPrice: confloat(ge=0.0)
     atmPutPrice: confloat(ge=0.0)
-    symbol: constr(pattern=r'^[A-Za-z0-9./-]+$', min_length=1, max_length=20) | None = (
-        None
-    )
+    symbol: (
+        constr(
+            pattern=r'^[A-Za-z0-9./-]*[A-Za-z0-9][A-Za-z0-9./-]*$',
+            min_length=1,
+            max_length=20,
+        )
+        | None
+    ) = None
     expiry: constr(pattern=r'^\d{4}-\d{2}-\d{2}$') | None = None
     expiration: constr(pattern=r'^\d{4}-\d{2}-\d{2}$') | None = None
     resolve: Resolve12 | None = Field(
@@ -1036,9 +1101,14 @@ class ProbabilityRequest1(BaseModel):
     riskFreeRate: float | None = None
     dividendYield: float | None = None
     timeToExpiry: PositiveFloat | None = None
-    symbol: constr(pattern=r'^[A-Za-z0-9./-]+$', min_length=1, max_length=20) | None = (
-        None
-    )
+    symbol: (
+        constr(
+            pattern=r'^[A-Za-z0-9./-]*[A-Za-z0-9][A-Za-z0-9./-]*$',
+            min_length=1,
+            max_length=20,
+        )
+        | None
+    ) = None
     expiry: constr(pattern=r'^\d{4}-\d{2}-\d{2}$') | None = None
     expiration: constr(pattern=r'^\d{4}-\d{2}-\d{2}$') | None = None
     resolve: Resolve13 | None = Field(
@@ -1072,7 +1142,11 @@ class Resolve14(BaseModel):
 
 class ProbabilityRequest2(BaseModel):
     mode: Literal['full']
-    symbol: constr(pattern=r'^[A-Za-z0-9./-]+$', min_length=1, max_length=20)
+    symbol: constr(
+        pattern=r'^[A-Za-z0-9./-]*[A-Za-z0-9][A-Za-z0-9./-]*$',
+        min_length=1,
+        max_length=20,
+    )
     expiration: str | None = None
     expiry: constr(pattern=r'^\d{4}-\d{2}-\d{2}$') | None = None
     resolve: Resolve14 | None = Field(
@@ -1107,7 +1181,11 @@ class Model9(Enum):
 
 class CalibrateRequest(BaseModel):
     model: Model9 = Field(..., description='Model to calibrate')
-    symbol: str = Field(..., description='Ticker symbol (e.g. "SPY")')
+    symbol: constr(
+        pattern=r'^[A-Za-z0-9./-]*[A-Za-z0-9][A-Za-z0-9./-]*$',
+        min_length=1,
+        max_length=20,
+    ) = Field(..., description='Ticker symbol (e.g. "SPY")')
     expiration: str | None = Field(
         None,
         description='Optional: specific expiration date (YYYY-MM-DD). Defaults to nearest.',
@@ -1733,22 +1811,28 @@ class SnapshotResponse(BaseModel):
         description='Max-pain curve series for the chart UI: per-strike rows of { strike, callPain, putPain, totalPain }.',
     )
     gexByStrike: list[dict[str, Any]] | None = Field(
-        None, description='GEX-by-strike series; opaque payload'
+        None,
+        description='Per-strike rows of { strike, callGex, putGex, netGex }. The legs are ABSOLUTE values and netGex is the signed sum of the underlying signed legs, so it is NOT recoverable from the two shown without knowing their signs. Dealer call gamma is positive and put gamma negative, which makes netGex = callGex - putGex. Source of truth: packages/shared/src/exposure-compute.ts.',
     )
     dexByStrike: list[dict[str, Any]] | None = Field(
-        None, description='DEX-by-strike series; opaque payload'
+        None,
+        description='Per-strike rows of { strike, callDex, putDex, netDex }. The legs are ABSOLUTE values and netDex is the signed sum of the underlying signed legs. Delta exposure signs run OPPOSITE to gamma: the call leg is negative and the put leg positive, so netDex = putDex - callDex and a negative netDex means the call leg is the larger one. Source of truth: packages/shared/src/exposure-compute.ts.',
     )
     vannaByStrike: list[dict[str, Any]] | None = Field(
-        None, description='Vanna-by-strike series; opaque payload'
+        None,
+        description='Per-strike rows of { strike, callVanna, putVanna, netVanna }. The legs are ABSOLUTE values and netVanna is the signed sum of the underlying signed legs, which here share a sign, so the magnitude of netVanna is callVanna + putVanna. Source of truth: packages/shared/src/exposure-compute.ts.',
     )
     charmByStrike: list[dict[str, Any]] | None = Field(
-        None, description='Charm-by-strike series; opaque payload'
+        None,
+        description='Per-strike rows of { strike, callCharm, putCharm, netCharm }. The legs are ABSOLUTE values and netCharm is the signed sum of the underlying signed legs. Unlike vanna and vomma, the call and put charm legs are computed from DIFFERENT expressions and do not necessarily share a sign, so netCharm is not recoverable from the two shown. Source of truth: packages/shared/src/exposure-compute.ts.',
     )
     vommaByStrike: list[dict[str, Any]] | None = Field(
-        None, description='Vomma-by-strike series; opaque payload'
+        None,
+        description='Per-strike rows of { strike, callVomma, putVomma, netVomma }. The legs are ABSOLUTE values and netVomma is the signed sum of the underlying signed legs, which here share a sign, so the magnitude of netVomma is callVomma + putVomma. Source of truth: packages/shared/src/exposure-compute.ts.',
     )
     volSkew: dict[str, Any] | None = Field(
-        None, description='Vol-skew curve; opaque payload'
+        None,
+        description='Vol-skew curve KEYED BY EXPIRATION: { "YYYY-MM-DD": [{ strike, iv }] }, each list sorted by strike. It is not a pair of parallel strike/iv arrays. Source of truth: proxy/services/SnapshotComputeService.ts:1023.',
     )
     probabilityData: dict[str, Any] | None = Field(
         None, description='Risk-neutral probability data; opaque payload'
@@ -2071,6 +2155,11 @@ class SemanticValidationError(BaseModel):
         description='Fields that ticker resolution could not fill, present on RESOLUTION_FAILED responses',
         examples=[['S', 'sigma']],
     )
+    unreadFields: list[str] | None = Field(
+        None,
+        description='The missing fields whose stored data could not be READ (an outage, not absence), present on 503 UPSTREAM_UNAVAILABLE responses: a retry may resolve them',
+        examples=[['r']],
+    )
     warnings: list[str] | None = Field(
         None,
         description='Non-fatal resolver warnings, present when ticker auto-fill ran',
@@ -2102,6 +2191,62 @@ class InternalError(BaseModel):
 class ServiceUnavailableError(BaseModel):
     error: str = Field(..., examples=['Worker pool draining; service unavailable'])
     code: str | None = Field(None, examples=['WORKER_POOL_UNAVAILABLE'])
+    retryable: bool | None = Field(
+        None, description='Present on UPSTREAM_UNAVAILABLE: true, a retry may succeed'
+    )
+    missingFields: list[str] | None = Field(
+        None,
+        description='UPSTREAM_UNAVAILABLE: every market input the request still needs (the unread ones and any with nothing on file)',
+    )
+    unreadFields: list[str] | None = Field(
+        None,
+        description='UPSTREAM_UNAVAILABLE: the missing inputs whose stored data could not be read (an outage, not absence)',
+        examples=[['r']],
+    )
+    warnings: list[str] | None = Field(
+        None, description='Resolver warnings, on UPSTREAM_UNAVAILABLE'
+    )
+
+
+class Code(Enum):
+    BROKER_CREDENTIAL_INVALID = 'BROKER_CREDENTIAL_INVALID'
+    BROKER_RATE_LIMITED = 'BROKER_RATE_LIMITED'
+    BROKER_REJECTED = 'BROKER_REJECTED'
+    BROKER_UNAVAILABLE = 'BROKER_UNAVAILABLE'
+    BROKER_ENTITLEMENT_MISSING = 'BROKER_ENTITLEMENT_MISSING'
+
+
+class BrokerFailure(Enum):
+    http_status = 'http-status'
+    timeout = 'timeout'
+    unreadable_response = 'unreadable-response'
+    other = 'other'
+
+
+class BrokerError(BaseModel):
+    error: str = Field(..., examples=['tradier rejected the chain request (HTTP 404)'])
+    code: Code
+    retryable: bool = Field(
+        ...,
+        description='Whether the same request can succeed later. False for a refused credential or a refused request.',
+    )
+    provider: str = Field(..., examples=['tradier'])
+    message: str | None = Field(
+        None,
+        description='What to do next (BROKER_CREDENTIAL_INVALID, BROKER_RATE_LIMITED, BROKER_ENTITLEMENT_MISSING).',
+    )
+    retryAfterSeconds: int | None = Field(
+        None,
+        description='BROKER_RATE_LIMITED: the wait the broker named, null when it named none.',
+    )
+    brokerFailure: BrokerFailure | None = Field(
+        None,
+        description='BROKER_REJECTED and BROKER_UNAVAILABLE: what kind of failure it was.',
+    )
+    brokerStatus: int | None = Field(
+        None,
+        description="BROKER_REJECTED and BROKER_UNAVAILABLE: the broker's HTTP status, null when it gave none.",
+    )
 
 
 class PriceResponse(BaseModel):

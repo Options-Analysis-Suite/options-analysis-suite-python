@@ -81,3 +81,28 @@ class SchwabCredentials(BrokerCredentials):
             "X-Schwab-Client-Id": self.client_id,
             "X-Schwab-Client-Secret": self.client_secret,
         }
+
+
+@dataclass(frozen=True)
+class MoomooCredentials(BrokerCredentials):
+    """moomoo's API token.
+
+    Copy it from the moomoo card on your Account page after connecting moomoo.
+    It is moomoo's read-only sign-in, sealed to your account by the server, so it
+    works only with API keys on the account that connected moomoo; connecting
+    moomoo again replaces it.
+
+    moomoo serves US option quotes in real time only once the account holds
+    assets or a US position; until then its option quotes may be delayed (about
+    15 minutes) with nothing in the data to say so, so a calibration on such an
+    account can fit delayed prices. A market moomoo explicitly refuses answers
+    403 ``BROKER_ENTITLEMENT_MISSING``, raised as :class:`oas.PermissionDeniedError`.
+    """
+
+    sealed_token: str
+
+    def headers(self) -> Mapping[str, str]:
+        return {
+            "X-Broker-Type": "moomoo",
+            "X-Moomoo-Sealed-Token": self.sealed_token,
+        }

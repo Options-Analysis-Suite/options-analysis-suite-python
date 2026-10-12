@@ -4,7 +4,7 @@
   "info": {
     "title": "Options Analysis Suite API",
     "version": "1.0.0",
-    "description": "Institutional-grade options analytics API. Programmatic access to 17 pricing models (including 7 exotic options), auto-calibration, real-time exposure analytics, WebSocket streaming, and pre-computed market data.\n\n## Features\n\n- **17 pricing models** — 10 standard (Black-Scholes, Heston, SABR, FFT (Carr-Madan with 6 characteristic functions), Variance Gamma, Jump Diffusion (Kou/Bates/Merton), Binomial, PDE, Monte Carlo, Local Volatility (Dupire + eSSVI)) plus 7 exotic (Barrier, Asian, Lookback, Digital, Compound, Chooser, Multi-Asset) with optional strategy-insight card via `includeInsight`\n- **Auto-calibration** — Heston, SABR, VG, JD, and Local Vol calibrate against live broker chain data in 0.25-16s\n- **Greek exposure** — GEX, DEX, VEX, Vanna, Charm, Vomma with gamma flip detection, call/put walls, abs gamma anchor, dealer positioning regime\n- **Real-time streaming** — WebSocket endpoint for live quotes, Greeks, and computed exposure snapshots\n- **Pre-computed data** — market regime, IV surfaces, snapshots, metrics, scanner, risk-neutral + lognormal probability distributions\n\n## Authentication\n\nAll `/v1/*` endpoints require an API key. Pass it via either header:\n\n- `Authorization: Bearer oas_live_...`\n- `X-API-Key: oas_live_...`\n\n## Rate limits\n\nSeparate buckets for data and compute endpoints (per user, shared across all API keys):\n\n- **Data** (`/v1/data/*`): **120 requests/minute**\n- **Compute** (`/v1/compute/*`): **120 requests/minute**\n- **Cheap compute** (BS, binomial, exposure, max pain, expected move): max **6 concurrent**\n- **Heavy compute** (MC, PDE, Heston, Local Vol, SABR, JD, VG, scenario, sensitivity): max **2 concurrent**\n- **Calibration**: max **1 concurrent** job (own lane, separate from compute pools) · hard-capped at **500/day** per user\n- Heavy compute endpoints may return **503** when worker capacity is unavailable\n- 429 responses include `X-RateLimit-Bucket` header (`data` or `compute`)\n\n## Broker credentials (BYOK)\n\nSome endpoints (calibration, full-mode probability, streaming) require live broker chain data. The API doesn't pay for market data; you supply your own credentials via request headers (the streaming endpoint takes them in its initial WebSocket auth message instead):\n\n- **TastyTrade**: `X-Broker-Type: tastytrade`, `X-Tastytrade-Refresh-Token`, `X-Tastytrade-Client-Secret`\n- **Tradier**: `X-Broker-Type: tradier`, `X-Tradier-Key`\n- **Schwab**: `X-Broker-Type: schwab`, `X-Schwab-Refresh-Token`, `X-Schwab-Client-Id`, `X-Schwab-Client-Secret` (calibration, full-mode probability, and streaming; streaming additionally requires a Schwab app approved for Accounts and Trading)\n\nNote: Public.com is **not supported on the API tier** (their Individual API program restricts third-party platforms). Public is available on the Pro webapp tier for in-browser use only.\n\n## Best practices (especially for LLM-driven agents)\n\n- **Calibrate once, then persist the fitted params — not the `calibrationId`.** `calibrationId` is a short-lived handle into a 30-second in-memory cache; it works for immediate follow-up `/price` and `/greeks` calls but is not durable. For reuse beyond 30s, save the fitted parameters from the calibration response and pass them as `modelParams` on subsequent calls. Either path avoids the 500/day calibration quota. Don't set `resolve.calibration: true` on every repeated call for the same symbol.\n- **Prefer `/v1/data/*` over recomputing.** Greeks history, IV surfaces, snapshot metrics, metrics-batch, scanner rankings, and regime classifications are precomputed or cached where available — typically much faster than recomputing from scratch. Don't loop `/v1/compute/greeks` to reconstruct what `/v1/data/greeks-history/:symbol` already returns.\n- **Use batch endpoints.** `/v1/data/metrics/batch` takes multiple symbols in one call; MultiAsset accepts `modelParams.tickers` for basket pricing. One batch call beats a loop of N single-symbol calls.\n- **Use canonical ticker symbols.** Symbols may contain letters, numbers, dot, dash, or slash (examples: `SPY`, `BRK.B`, `BRK-B`, `/ES`). Space-separated class shares such as `BRK B` are rejected; use dot or dash form instead.\n- **Use ticker auto-fill instead of fabricated numerics.** Pass `symbol` + `expiry` and let the API resolve `S`, `sigma`, `r`, `t` from cached market data — the response's `resolved` block shows which source filled each field (`snapshot`, `atmIv-expiry`, `hv-20d`, `fred-DGS3MO`, …). Don't hallucinate market values from training data.\n- **Always inspect `warnings` and `resolved`.** The compute route returns top-level `warnings` plus a `resolved` block whenever ticker auto-fill ran. Agents that ignore these can act on a price computed with a stale spot or a missing-dividend fallback.\n- **Honor `Retry-After` on 429.** Sleep the suggested duration. Retrying instantly in a tight loop wastes tokens and bounces off the same limit.\n- **Use `X-Cache-Status` to guide polling cadence.** Data responses include `X-Cache-Status`; values include `HIT`, `MISS`, `DEDUP`, `NO_REDIS`, and error/fallback statuses. If you see all HITs, you're polling faster than the underlying data updates — back off.\n- **Don't repoll faster than the underlying data updates.** Most `/v1/data/*` endpoints back tables that refresh on a documented daily cron. Repolling every 30s returns the same bytes.\n- **Stream live data over `/v1/ws`, don't poll REST.** Up to 30 msg/sec × 50 symbols × 5 sessions beats any REST polling loop on freshness and rpm budget.\n- **Match model to task.** Black-Scholes and Binomial are sub-100ms and correct for vanilla options. Reserve Heston/SABR/Local Vol/JD/MC for cases where skew, jumps, or path-dependence actually matter.\n- **Scope and secure keys.** Create compute-only, data-only, or streaming-only keys to limit blast radius. Never embed keys in client-side JS, browser extensions, public repos, or LLM tool manifests.",
+    "description": "Institutional-grade options analytics API. Programmatic access to 17 pricing models (including 7 exotic options), auto-calibration, real-time exposure analytics, WebSocket streaming, and pre-computed market data.\n\n## Features\n\n- **17 pricing models** — 10 standard (Black-Scholes, Heston, SABR, FFT (Carr-Madan with 6 characteristic functions), Variance Gamma, Jump Diffusion (Kou/Bates/Merton), Binomial, PDE, Monte Carlo, Local Volatility (Dupire + eSSVI)) plus 7 exotic (Barrier, Asian, Lookback, Digital, Compound, Chooser, Multi-Asset) with optional strategy-insight card via `includeInsight`\n- **Auto-calibration** — Heston, SABR, VG, JD, and Local Vol calibrate against live broker chain data in 0.25-16s\n- **Greek exposure** — GEX, DEX, VEX, Vanna, Charm, Vomma with gamma flip detection, call/put walls, abs gamma anchor, dealer positioning regime\n- **Real-time streaming** — WebSocket endpoint for live quotes, Greeks, and computed exposure snapshots\n- **Pre-computed data** — market regime, IV surfaces, snapshots, metrics, scanner, risk-neutral + lognormal probability distributions\n\n## Authentication\n\nAll `/v1/*` endpoints require an API key. Pass it via either header:\n\n- `Authorization: Bearer oas_live_...`\n- `X-API-Key: oas_live_...`\n\n## Rate limits\n\nSeparate buckets for data and compute endpoints (per user, shared across all API keys):\n\n- **Data** (`/v1/data/*`): **120 requests/minute**\n- **Compute** (`/v1/compute/*`): **120 requests/minute**\n- **Cheap compute** (BS, binomial, exposure, max pain, expected move): max **6 concurrent**\n- **Heavy compute** (MC, PDE, Heston, Local Vol, SABR, JD, VG, scenario, sensitivity): max **2 concurrent**\n- **Calibration**: max **1 concurrent** job (own lane, separate from compute pools) · hard-capped at **500/day** per user\n- Heavy compute endpoints may return **503** when worker capacity is unavailable\n- 429 responses include `X-RateLimit-Bucket` header (`data` or `compute`)\n\n## Broker credentials (BYOK)\n\nSome endpoints (calibration, full-mode probability, streaming) require live broker chain data. The API doesn't pay for market data; you supply your own credentials via request headers (the streaming endpoint takes them in its initial WebSocket auth message instead):\n\n- **TastyTrade**: `X-Broker-Type: tastytrade`, `X-Tastytrade-Refresh-Token`, `X-Tastytrade-Client-Secret`\n- **Tradier**: `X-Broker-Type: tradier`, `X-Tradier-Key`\n- **Schwab**: `X-Broker-Type: schwab`, `X-Schwab-Refresh-Token`, `X-Schwab-Client-Id`, `X-Schwab-Client-Secret` (calibration, full-mode probability, and streaming; streaming additionally requires a Schwab app approved for Accounts and Trading)\n- **moomoo**: `X-Broker-Type: moomoo`, `X-Moomoo-Sealed-Token` (the API token from the moomoo card on your Account page: moomoo's read-only sign-in, sealed to your account, so it works only with API keys on the account that connected moomoo; streaming takes it as `credentials.moomooSealedToken` and carries quotes, not Greeks)\n\nNote: Public.com is **not accepted as a per-request header credential** on these endpoints, and no `/v1` endpoint reads a stored credential. A broker credential stored against your account is read by the platform's live-data routes, which sit outside `/v1` and are not part of this contract or its SDK; they are what the MCP server's live tools (`get_live_options_chain`, `get_live_dealer_positioning` and the other live tools) call. Storage is an opt-in on the account page for the Pro tier and above, and is offered for Tradier, tastytrade, Schwab, Public.com and moomoo. Public.com is also available for direct in-browser use on the Pro webapp tier.\n\n## Best practices (especially for LLM-driven agents)\n\n- **Calibrate once, then persist the fitted params — not the `calibrationId`.** `calibrationId` is a short-lived handle into a 30-second in-memory cache; it works for immediate follow-up `/price` and `/greeks` calls but is not durable. For reuse beyond 30s, save the fitted parameters from the calibration response and pass them as `modelParams` on subsequent calls. Either path avoids the 500/day calibration quota. Don't set `resolve.calibration: true` on every repeated call for the same symbol.\n- **Prefer `/v1/data/*` over recomputing.** Greeks history, IV surfaces, snapshot metrics, metrics-batch, scanner rankings, and regime classifications are precomputed or cached where available — typically much faster than recomputing from scratch. Don't loop `/v1/compute/greeks` to reconstruct what `/v1/data/greeks-history/:symbol` already returns.\n- **Use batch endpoints.** `/v1/data/metrics/batch` takes multiple symbols in one call; MultiAsset accepts `modelParams.tickers` for basket pricing. One batch call beats a loop of N single-symbol calls.\n- **Use canonical ticker symbols.** Symbols may contain letters, numbers, dot, dash, or slash (examples: `SPY`, `BRK.B`, `BRK-B`, `/ES`). Space-separated class shares such as `BRK B` are rejected; use dot or dash form instead.\n- **Use ticker auto-fill instead of fabricated numerics.** Pass `symbol` + `expiry` and let the API resolve `S`, `sigma`, `r`, `t` from cached market data — the response's `resolved` block shows which source filled each field (`snapshot`, `atmIv-expiry`, `hv-20d`, `fred-DGS3MO`, …). Don't hallucinate market values from training data.\n- **Always inspect `warnings` and `resolved`.** The compute route returns top-level `warnings` plus a `resolved` block whenever ticker auto-fill ran. Agents that ignore these can act on a price computed with a stale spot or a missing-dividend fallback.\n- **Honor `Retry-After` on 429.** Sleep the suggested duration. Retrying instantly in a tight loop wastes tokens and bounces off the same limit.\n- **Use `X-Cache-Status` to guide polling cadence.** Data responses include `X-Cache-Status`; values include `HIT`, `MISS`, `DEDUP`, `NO_REDIS`, and error/fallback statuses. If you see all HITs, you're polling faster than the underlying data updates — back off.\n- **Don't repoll faster than the underlying data updates.** Most `/v1/data/*` endpoints back tables that refresh on a documented daily cron. Repolling every 30s returns the same bytes.\n- **Stream live data over `/v1/ws`, don't poll REST.** Up to 30 msg/sec × 50 symbols × 5 sessions beats any REST polling loop on freshness and rpm budget.\n- **Match model to task.** Black-Scholes and Binomial are sub-100ms and correct for vanilla options. Reserve Heston/SABR/Local Vol/JD/MC for cases where skew, jumps, or path-dependence actually matter.\n- **Scope and secure keys.** Create compute-only, data-only, or streaming-only keys to limit blast radius. Never embed keys in client-side JS, browser extensions, public repos, or LLM tool manifests.",
     "contact": {
       "name": "Options Analysis Suite",
       "url": "https://optionsanalysissuite.com"
@@ -35,7 +35,7 @@
     },
     {
       "name": "Streaming",
-      "description": "Real-time WebSocket streaming at `/v1/ws`. Supports quote, greeks, and exposure channels with BYOK broker credentials (TastyTrade, Tradier, Schwab; Schwab streaming requires an app approved for Accounts and Trading). See streaming documentation."
+      "description": "Real-time WebSocket streaming at `/v1/ws`. Supports quote, greeks, and exposure channels with BYOK broker credentials (TastyTrade, Tradier, Schwab, moomoo; Schwab streaming requires an app approved for Accounts and Trading, and moomoo streams quotes, not Greeks). See streaming documentation."
     },
     {
       "name": "Health",
@@ -70,7 +70,7 @@
       "post": {
         "operationId": "compute.price",
         "summary": "Multi-model option pricing",
-        "description": "Price an option using one of 17 supported pricing models. For advanced models, pass model-specific parameters via `modelParams`, or use a `calibrationId` from `/v1/compute/calibrate` to reuse calibrated parameters.\n\n**Required tenor:** every request must specify a time-to-expiry. Provide either `t` (numeric years) **or** `expiry` / `expiration` (YYYY-MM-DD). Missing both returns a `400` validation error.\n\n**Ticker auto-fill:** supply `symbol: \"AAPL\"` (plus `expiry: \"YYYY-MM-DD\"` since tenor is mandatory) to let the API fill `S`, `sigma`, `q`, `r`, and `t` from cached market data. User-supplied numeric fields always win; the response `resolved` block reports the effective value + source (`override`, `snapshot`, `atmIv-expiry`, `hv-20d`, `ratios_ttm`, `profile_yield`, `fred-DGS3MO`, etc.). For MultiAsset, supply `modelParams.tickers: [\"SPY\",\"QQQ\",...]` to build the basket from 5y monthly correlations. Requires both `compute` and `data` scopes on the API key. Set `resolve.calibration: true` (Heston/SABR/VG/JD/LocalVol only) to additionally run auto-calibration under the existing calibration quota — broker headers (`X-Broker-Type`, `X-Tradier-Key`, …) are required for this mode.\n\n**modelParams by model:**\n\n- **heston:** `v0` / `initialVariance` / `hestonV0`, `kappa` / `hestonKappa`, `theta` / `hestonTheta`, `volOfVol` / `sigmaV` / `hestonXi` / `xi` / `hestonVolOfVol` (legacy alias: `sigma`), `rho` / `hestonRho`, `integrationPoints` (legacy alias: `hestonOrder`). Every spelling listed here is accepted identically on `/price`, `/greeks` and `/sensitivity`. Omitted parameters take these defaults, which materially affect the price: `v0` = `sigma^2`, `theta` = `sigma^2`, `kappa` = 2.0, `volOfVol` = 0.3, `rho` = -0.7, `integrationPoints` = 16. Supply them explicitly (or via a calibration) rather than relying on the defaults. Domain rules, applied identically on `/price`, `/greeks` and `/sensitivity` and rejected with a 422 `INVALID_HESTON_PARAMS`: `v0 >= 0`, `theta >= 0` (both are variances), `kappa > 0` (a mean-reversion speed), `volOfVol >= 0`, and `-1 < rho < 1` strictly. Every one of these parameters must be a number or a numeric string; booleans, arrays and objects are rejected with a 422 `INVALID_MODEL_PARAM` rather than coerced. `integrationPoints` is the exception to the last rule only in range: a value outside 8..128 is clamped into it rather than rejected. Where a canonical spelling and a legacy alias are both supplied, the canonical one wins (`volOfVol` over `sigma`, `integrationPoints` over `hestonOrder`). On `/v1/compute/greeks`, the volatility Greeks (`vega`, `vomma`, `vanna`, `veta`, `zomma`, `ultima`, `dcharmDvol`) are taken with respect to the model`s own instantaneous volatility `sqrt(v0)`, not the request `sigma`. With `v0` omitted the two coincide, since `v0` then defaults to `sigma^2`. Note that `sigma` stops influencing the Heston price only once BOTH `v0` and `theta` are supplied - supplying `v0` alone leaves `theta` defaulting to `sigma^2`, so `sigma` still moves the price through the long-run variance (with `v0` = 0.09 and `theta` omitted, `sigma` of 0.1 / 0.2 / 0.4 prices 9.4410 / 10.8481 / 15.0780).\n- **sabr:** `sabrAlpha` / `alpha`, `sabrBeta` / `beta`, `sabrRho` / `rho`, `sabrNu` / `nu`, `approximationMethod` (hagan | obloj | paulot, default hagan), `shift`, `expansionOrder`, `useSmallTimeCorrection`, `fixBeta`, `fixedBetaValue`, `atmReference`, `volFloor`, `useArbitrageChecks`\n- **fft:** `processType` (blackScholes | merton | varianceGamma | heston | kou | bates), `N`, `alpha`, `eta`, `integrationMethod` (legacy aliases: `fftGridSize`, `fftAlpha`, `fftEta`, `fftIntegrationMethod`). Process-specific params match the webapp: Merton `mertonLambda`, `mertonMuJ`, `mertonSigmaJ`; Variance Gamma `vgSigma`, `vgNu`, `vgTheta`; Heston `hestonV0`, `hestonKappa`, `hestonTheta`, `hestonXi`, `hestonRho`; Kou `kouLambda`, `kouP`, `kouEta1`, `kouEta2`; Bates `batesV0`, `batesKappa`, `batesTheta`, `batesSigmaV`, `batesRho`, `batesLambda`, `batesMuJ`, `batesSigmaJ`\n- **vg:** `sigma` / `vgSigma`, `nu` / `vgNu`, `theta` / `vgTheta`, optional `method`, `fftPoints`, `alpha`, `eta`, `cacheFFT`, `weighting`\n- **jd:** `modelType` / `jdModel` (kou | merton | bates, default kou; any other value is rejected with a 422 rather than falling back to kou). Merton/Kou accept `baseVolatility` as the diffusion sigma override. Kou: `lambda`, `pUp`, `etaUp`, `etaDown`, optional `tailTolerance` / `tailTol`, `maxK`, `forceFFT`, `fftGridSize`. Merton: `lambda`, `muJ`, `sigmaJ`, optional `maxPoisson`. Bates: `v0`, `kappa`, `theta`, `sigmaV` / `volOfVol` / `xi`, `rho`, `lambda`, `muJ`, `sigmaJ`, optional `forceExactCF`, `fftGridSize`. Jump defaults when omitted: `lambda` = 0.1, `muJ` = -0.05, `sigmaJ` = 0.15, `pUp` = 0.5, `etaUp` = `etaDown` = 10, `maxK` = 30.\n- **binomial:** `steps`, `enableAmerican` / `isAmerican`, `treeType` (CRR | JR | LR, default LR), optional Richardson controls `useRichardsonExtrap`, `richardsonMode`, `stepMultiplier`, `extrapOrder`, and discrete-dividend inputs either as `dividends` array or the webapp-style `useDiscreteDividends`, `exDividendDates`, `dividendAmounts`. The public API uses the ex-date discrete-dividend model. `steps` and `enableAmerican` / `isAmerican` are also accepted as top-level request fields; where both are supplied the `modelParams` spelling wins, because the generated SDKs populate the top-level pair with their own defaults even when the caller never set them. `treeType` selects the lattice construction: `CRR` is Cox-Ross-Rubinstein; `JR` keeps equal-magnitude CRR up/down factors (`u·d = 1`) and puts drift into the risk-neutral probability (this is NOT the equal-probability Jarrow-Rudd 1983 tree, which puts drift into `u`/`d` with `p = 1/2` and breaks finite-difference cross-Greeks because `u·d ≠ 1`); `LR` is Leisen-Reimer with Peizer-Pratt inversion method 2, is the DEFAULT when `treeType` is omitted, and rounds an even `steps` UP to the next odd count, except at the public 2000-step ceiling where up is unavailable so it rounds DOWN to 1999 (same rule the engine applies at its own higher MAX_BINOMIAL_STEPS). `exDividendDates` entries may be given in YEARS or in DAYS to the ex-date, and a bare number cannot say which - `2.5` on a 3-year option is a legitimate 2.5 days and a legitimate 2.5 years, and the two price differently. Set `dividendTimeUnit` (alias `exDividendTimeUnit`) to `days` or `years` to say which; any other value is rejected with a 422. When it is omitted the legacy rule applies unchanged: entries greater than 2 are read as DAYS, entries of 2 or less as YEARS. Under either reading, an entry that falls after expiry is dropped because it cannot affect the price. Greek accuracy, on the default `LR`: `delta`, `vega`, `rho`, `vanna`, `vomma` and `ultima` match Black-Scholes to better than 0.05% at the money, and `theta`, `charm`, `veta` and `dcharmDvol` to better than 0.15%. `gamma` converges from 1.13% at 50 steps to 0.04% at 1600. `speed`, `zomma` and `color` are the loosest, measured 28.4%, 6.7% and 7.0% at 50 steps, 7.7%, 1.5% and 1.6% at the default 200, and 0.96%, -0.02% and 0.01% at 1600; raise `steps` when the third-order Greeks matter. Away from the money the worst of the seventeen at 200 steps is `zomma` at 20.4%, then `speed` at 9.2% and `color` at 8.9%, with everything else inside 1.2%. Accuracy degrades at low volatility, where these Greeks are also small in absolute terms.\n\n  **`CRR` publishes accurate prices and first-order Greeks, but its higher-order Greeks are only meaningful when `S = K`.** Cox-Ross-Rubinstein centres its lattice on SPOT with `u·d = 1`, so a node lands on the strike only at the money; anywhere else, each bumped reprice moves the payoff kink between nodes and the finite differences measure that motion rather than the option. In practice the CRR cross-Greeks return approximately the at-the-money value at every spot - at K=100, sigma=0.2, 200 steps, `vanna` reads about -0.095 whether the true value is +1.43 (S=80) or -0.96 (S=120). Worst-case error over S in {80, 90, 110, 120}: `vanna` 110%, `charm` 145%, `vomma` 212%, `veta` 55%, `speed` 23%, `zomma` 148%, `ultima` 200%, `dcharmDvol` 218%. This is structural rather than a resolution limit - the same errors appear at 800 steps - and it begins immediately, at 18% for `vanna` by 0.2% moneyness and 50% by 1%, so there is no tolerance band inside which CRR higher-order Greeks can be trusted off the money. `CRR` price, `delta`, `gamma`, `vega`, `theta`, `rho`, `epsilon`, `phi` and `lambda` are unaffected and remain accurate. Use the default `LR` for any Greek above first order; `CRR` is retained because it is the canonical textbook construction that callers cross-check against. `JR` shares the same `u·d = 1` geometry as `CRR` and therefore the same limitation.\n- **pde:** `forceMethod` / `pdeForceMethod` (`analytical` | `pde` | `pde-with-fallback`, normalized case-insensitively; unsupported values return 422), `accuracyThreshold` / `pdeAccuracyThreshold` (non-negative; malformed or negative values return 422), plus grid controls `spaceSteps`, `timeSteps`, `sMin`, `sMax`, `gridSpacing`, `rannacherSteps`\n- **mc:** `paths` / `mcPaths` / `nPaths`, `steps` / `stepsPerPath` / `timeSteps` / `nSteps`, `seed` / `mcSeed`, `process` / `processType` (`blackscholes` | `jumpdiffusion` | `meanreverting` | `heston` | `localvolcev` | `localvoldupire`; aliases such as `BlackScholes`, `Merton`, `LocalVolatility`, `Dupire`, and `CEV` are normalized), top-level process params or nested `processParams`, `useAntithetic`, `useControlVariate`, `useImportanceSampling`, `useMomentMatching`, `useQMC`, `qmcType` (`sobol` | `halton`; other values return 422 `INVALID_MODEL_PARAM`). `processType`, `qmcType`, and `rngMethod` must be strings when supplied; arrays, booleans, and objects return 422 rather than being string-coerced. `rngMethod: SobolTrue` is normalized to Sobol QMC; non-QMC browser RNG labels fall back to the standard server RNG path. Monte Carlo pricing in the API is European-only. Browser-only execution flags such as `useGPU`, `batchSize`, and `parallelThreads` are ignored server-side. Nested `processParams` may supply process-specific fields but cannot override the validated request coordinates `S`, `r`, `q`, `sigma`, or `T`. QMC dimension is the path step count: Sobol supports at most 40 `nSteps` and Halton at most 10. A larger value (including the 252-step non-GBM default when `nSteps` is omitted) returns a 422 `INVALID_MODEL_PARAM` rather than silently running the pseudo-random path or surfacing a generator error.\n\n  `seed` / `mcSeed` is validated rather than coerced: it must be an integer with `|seed| < 2^52` and must not be 0. Zero is rejected because the engine builds its generator with `seed || Date.now()`, so a zero seed silently becomes the wall clock - and on `/v1/compute/greeks` the seed is reused across every bumped evaluation to give common random numbers, so a wall-clock seed would make each bump draw a different stream and the Greeks would measure Monte Carlo noise rather than the bump. Fractional, out-of-range, non-numeric and array/boolean/object values return a `422` with `code: \"INVALID_MODEL_PARAM\"`; a numeric string is accepted only when it spells a plain integer (`\"1337\"` yes, `\"1.5\"` no). On the standard pseudo-random path the generator reduces the seed to 32 bits, so seeds differing by a multiple of 2^32 are the same seed. That equivalence does NOT extend to the QMC paths (`useQMC` with Sobol or Halton): those initializers scale the raw seed before reducing it, and above 2^53 / 1664525 the multiply loses precision, so two seeds a multiple of 2^32 apart diverge - seeds 1 and 1 + 1000x2^32 price 10.6572 vs 10.4724 under Sobol and 10.5099 vs 11.4230 under Halton, against an identical 9.0366 on the standard path. Repeating the same seed is deterministic on every path, and on every supported `processType`. With a valid seed, repeating a request returns the identical price.\n  Two of the six processes carry their own instantaneous-volatility input: `heston` reads `v0` (the instantaneous variance, aliased `hestonV0`; where both spellings are present `hestonV0` wins, matching the process itself) and `meanreverting` reads `meanRevertSigma`. Either may be a number or a non-blank numeric string; accepted strings are normalized before pricing so `/price` and `/greeks` use the same value. Supplied non-numeric, blank, or negative values return a 422 `INVALID_MODEL_PARAM` on both endpoints rather than being quietly replaced. Heston permits the valid boundary `v0 = 0`; mean-reverting requires `meanRevertSigma > 0` because its engine treats zero as omission. A request-level `sigma = 0` is likewise preserved rather than defaulted to 0.2, and omitted Heston `v0` / `theta` then derive as zero. Explicit Heston `theta = 0` and `sigmaV = 0` are also preserved rather than replaced by their defaults.\n  On `/v1/compute/greeks`, the volatility Greeks (`vega`, `vanna`, `vomma`, `veta`, `zomma`, `ultima`, `dcharmDvol`) are differentiated with respect to whichever state the process actually reads: `sqrt(v0)` for Heston (matching the semi-analytic `heston` model), `meanRevertSigma` for mean-reverting, and the request `sigma` for every other process. With explicit Heston `v0`, only that state moves and request `sigma` stays fixed, so an omitted long-run variance `theta` remains at the value `/price` derived from request `sigma`. With `v0` omitted, the stencil rewrites its implicit `v0 = sigma^2`; an implicit `theta = sigma^2` moves with it, preserving the pre-existing derivative coordinate. The scaled step keeps ordinary positive values in range. At `v0 = 0`, and at request `sigma = 0` for the five generic-volatility processes, the centered stencil uses the even continuation in volatility rather than sending a negative magnitude to the engine. A positive value so small that the second- or third-order finite-difference denominator underflows can still be priced, but `/greeks` returns a 422 `INVALID_MODEL_PARAM` instead of publishing sanitized zero derivatives.\n- **localvol:** PDE-only public surface. Supported params: `impliedVolData` (array or JSON string), `impliedVolDataArray`, `useDupire`, `useAmerican`, `interpolation` (essvi | linear | svi | dupire; cubic is no longer supported), `spotSteps` / `pdeGridSize`, `timeSteps` / `pdeTimeSteps`, `rannacherSteps`, `regularizationParam`, `localVolBeta` / `beta` / `cevBeta`, `cevScale`, `minVol` / `dupireMinVol`, `maxVol` / `dupireMaxVol`, `ticker`\n- **barrier:** `barrierType` (up-out | down-out | up-in | down-in | double-out | double-in), `barrierLevel`, `rebate`, `monitoringType` (continuous | discrete | window), `monitoringFreq`, `upperBarrier`, `lowerBarrier`, `upperRebate`, `lowerRebate`, `windowStart`, `windowEnd`\n- **asian:** `averagingType` (arithmetic | geometric), `strikeType` (fixed | floating), `method` (curran | geometric; `mc`/`montecarlo` requests are normalized to curran server-side), `numObservations` (omitted and zero use the pricer's `floor(252 * t)` default - `ASIAN_DEFAULTS` carries `0`, so zero does not mean \"one fixing\"; positive values truncate toward zero, a result below 1 retains the zero/default behavior, and the effective count clamps to 1..2048; negative, non-finite, empty, boolean, array and object values return 422 `INVALID_MODEL_PARAM`), `observationFreq`, `observationDates` (array or JSON-encoded array of future times to each fixing in years from the valuation time; it must contain at least one date, and dates must be finite, positive, strictly increasing and no later than `t`; malformed/non-array/empty values, violations of those rules, and schedules over 2048 entries return 422 rather than silently using or truncating the generated schedule. On `/greeks`, elapsed finite-difference time is subtracted from every date, explicit or derived, preserving the calendar spacing; the step is shortened when needed so it cannot pass the first fixing. An omitted schedule is materialized once at the requested tenor and then shifted the same way, so the time Greeks measure the decay of the position held rather than a family of contracts re-specified at each bumped tenor; this can change time Greeks materially compared with the old rescaled-schedule behavior. `observationDates` now also applies to `averagingType: \"arithmetic\"`, which previously derived its schedule from `(t, numObservations)` alone and ignored the parameter; where a schedule is supplied its length defines the future fixing count, matching the geometric path), `pastFixings`, `runningAverage`, `runningSum`, `fixingsElapsed`. `fixingDates` and `observations` are accepted aliases for the observation COUNT, not for a schedule; passing an array to either returns 422\n- **lookback:** `lookbackType` (floating | fixed), `currentMax`, `currentMin`, `monitoringType` / `monitoring`, `monitoringFrequency`, `method`\n- **digital:** `type` / `digitalType` — accepts either short form (`cash` | `asset` | `gap`) or long form (`cash-or-nothing` | `asset-or-nothing` | `gap`); both are equivalent server-side. Also `cashAmount`, `gapAmount`, `smoothing` (clamped server-side to a minimum of 1e-4), `method`\n- **compound:** `compoundType` (call-on-call | call-on-put | put-on-call | put-on-put), `underlyingStrike`, `firstExpiry`, `secondExpiry` (defaults to request `t`), `method`, `mcPaths`, `mcSeed`, `useAntithetic`, `useControlVariate`. Requires 0 < `firstExpiry` < `secondExpiry`; violations are rejected with a 422 on both `/price` and `/greeks`. A supplied `mcPaths` is clamped to 2..1000000; when it is omitted the pricer applies its own default of **10000** paths, so omitting it is not the same as sending 100000. The lower bound is 2 rather than 1 because the antithetic path pairs `floor(mcPaths / 2)` draws, and a single path yields none. `mcSeed` does not clamp: it must be an integer with `|mcSeed| < 2^52` and must not be 0 (the pricer reads `mcSeed || Date.now()`, so a zero seed would silently become the wall clock). Fractional, out-of-range, non-numeric and array/boolean/object values are rejected with a 422. A numeric string is accepted only when it spells a plain integer: `\"1337\"` yes, `\"1.0000000000000001\"` no. Two limits worth knowing rather than discovering. First, the seed is reduced to 32 bits by the generator, so seeds differing by a multiple of 2^32 are the same seed. Second, a JSON number literal is rounded to a double by the parser before the API ever sees it, so a fraction finer than the double spacing at your magnitude is already gone and no server-side check can recover it - `1.0000000000000001` arrives as `1`. That is why seeds at or above 2^52 are refused outright (there the spacing reaches 1, so any fractional literal has already become an integer), and why the string form is the exact one at every magnitude.\n- **chooser:** `chooserType` (simple | complex; anything else is a 422), `choiceTime`, `maturity`, `callStrike`, `putStrike`, `callMaturity`, `putMaturity`, `method`, `mcPaths`, `rngSeed` / `seed` / `mcSeed`, `useAntithetic`, `useControlVariate`. `choiceTime` must be positive. A **simple** chooser additionally requires `maturity` > `choiceTime`; a **complex** chooser requires `callMaturity` > `choiceTime` and `putMaturity` > `choiceTime` (`maturity` only supplies their default). Violations are rejected with a 422 on both `/price` and `/greeks`. A supplied `mcPaths` is clamped to 2..1000000, but note the effective floor is higher: the chooser pricer runs `max(mcPaths, 20000)` paths, so any value below 20000 - including the 10000 it defaults to when omitted - executes at 20000. Monte Carlo pricing is deterministic: `rngSeed` (also accepted as `seed` or `mcSeed`) defaults to 1337, and repeating a request returns the same price. It must be an integer with `|seed| < 2^52`; fractional, non-numeric, and array/boolean/object values return a 422, and a numeric string is accepted only when it spells a plain integer (`\"1337\"` yes, `\"1.5\"` no). Unlike `mc`, `compound` and `multiasset`, a seed of **0 is accepted** here: this engine tests for `undefined`/`null` rather than falsiness and its Mulberry32 generator adds a constant before first use, so state 0 is a working stream rather than a silent fallback to the wall clock. The generator reduces the seed with `seed >>> 0`, so seeds differing by a multiple of 2^32 are the same seed. On `/v1/compute/greeks` the seed is reused across every bumped evaluation and the same resolved seed is used by the optional insight repricer, so both remain deterministic and the Greeks measure the bump rather than sampling noise.\n- **multiasset:** `payoffType` / `type` / `multiAssetType` (basket | spread | max | min), `numAssets`, `correlation`, `corrMatrix` / `correlationMatrix`, `prices[]`, `volatilities[]`, `dividends[]`, `weights[]`, `method`, `mcPaths`, `seed`, `useAntithetic`, `useControlVariate`, `useSobol`. If `prices[]` is omitted, the request spot `S` is used as the first asset price. Monte Carlo pricing is deterministic: `seed` defaults to 1337, and repeating a request returns the same price. `seed` must be an integer whose unsigned 32-bit value is non-zero - the generator is seeded with `seed >>> 0`, so 0 and any multiple of 2^32 are rejected with a 422, as are non-integer, non-numeric, and out-of-range values at or above 2^52. A numeric string is accepted only when it spells a plain integer: `\"1337\"` yes, `\"1.0000000000000001\"` no. One limit no server-side check can close: a JSON number literal is rounded to a double by the parser before it reaches the API, so a fraction finer than the double spacing at your magnitude is already gone - `1.0000000000000001` arrives as `1`. That is why the 2^52 bound exists (at and above it the spacing reaches 1, so a fractional literal has already become an integer) and why the string form is the exact one at every magnitude. The remaining numeric knobs do normalize rather than reject: `mcPaths` is clamped to 1..1000000 and defaults to 100000. `numAssets` resolves to the LARGEST of the explicit value (truncated toward zero, or 2 when omitted) and the lengths of any supplied `prices[]` / `volatilities[]` / `dividends[]` / `weights[]`, capped at 32 - so `numAssets: 2` with three prices resolves to three assets, and an omitted count with a single price still resolves to two. Each of those arrays is then padded or truncated to the resolved count using the request `S` / `sigma` / `q` and equal weights.",
+        "description": "Price an option using one of 17 supported pricing models. For advanced models, pass model-specific parameters via `modelParams`, or use a `calibrationId` from `/v1/compute/calibrate` to reuse calibrated parameters.\n\n**Required tenor:** every request must specify a time-to-expiry. Provide either `t` (numeric years) **or** `expiry` / `expiration` (YYYY-MM-DD). Missing both returns a `400` validation error.\n\n**Ticker auto-fill:** supply `symbol: \"AAPL\"` (plus `expiry: \"YYYY-MM-DD\"` since tenor is mandatory) to let the API fill `S`, `sigma`, `q`, `r`, and `t` from cached market data. User-supplied numeric fields always win; the response `resolved` block reports the effective value + source (`override`, `snapshot`, `atmIv-expiry`, `hv-20d`, `hv-realized-<n>obs`, `ratios_ttm`, `profile_yield`, `fred-DGS3MO`, etc.). A realized volatility computed from price history not yet confirmed by a refresh carries the suffix `-unconfirmed` (`hv-realized-<n>obs-unconfirmed`), and a MultiAsset leg whose volatility or correlation was estimated from such history adds a warning naming the ticker. For MultiAsset, supply `modelParams.tickers: [\"SPY\",\"QQQ\",...]` to build the basket from 5y monthly correlations. Requires both `compute` and `data` scopes on the API key. Set `resolve.calibration: true` (Heston/SABR/VG/JD/LocalVol only) to additionally run auto-calibration under the existing calibration quota — broker headers (`X-Broker-Type`, `X-Tradier-Key`, …) are required for this mode.\n\n**modelParams by model:**\n\n- **heston:** `v0` / `initialVariance` / `hestonV0`, `kappa` / `hestonKappa`, `theta` / `hestonTheta`, `volOfVol` / `sigmaV` / `hestonXi` / `xi` / `hestonVolOfVol` (legacy alias: `sigma`), `rho` / `hestonRho`, `integrationPoints` (legacy alias: `hestonOrder`). Every spelling listed here is accepted identically on `/price`, `/greeks` and `/sensitivity`. Omitted parameters take these defaults, which materially affect the price: `v0` = `sigma^2`, `theta` = `sigma^2`, `kappa` = 2.0, `volOfVol` = 0.3, `rho` = -0.7. Supply them explicitly (or via a calibration) rather than relying on the defaults. Domain rules, applied identically on `/price`, `/greeks` and `/sensitivity` and rejected with a 422 `INVALID_HESTON_PARAMS`: `v0 >= 0`, `theta >= 0` (both are variances), `kappa > 0` (a mean-reversion speed), `volOfVol >= 0`, and `-1 < rho < 1` strictly. Every one of these parameters must be a number or a numeric string; booleans, arrays and objects are rejected with a 422 `INVALID_MODEL_PARAM` rather than coerced. `integrationPoints` is the exception to the last rule only in range: a value outside 8..128 is clamped into it rather than rejected. It no longer changes the price: the Fourier integration follows the characteristic function (its range and its subdivision adapt to it), so it is accepted for compatibility only. A contract whose integration does not settle (a correlation near -1 or 1 with almost no variance to expiry) is rejected with a 422 `NON_FINITE_RESULT` rather than priced: on `/price`; on `/greeks` when the price or any price its Greeks are differenced from does not settle; and on `/sensitivity` when the price or a model derivative at any point does not. A Heston `/sensitivity` sweep is rejected with a 422 `COMPUTE_BUDGET_EXCEEDED` once it has spent more than 8 million integrand evaluations, checked after each point, so a rejected sweep has spent somewhat more (an ordinary 200-point sweep spends 0.3 to 1.4 million; a correlation near -1 can need many times that); fewer points will fit. Where a canonical spelling and a legacy alias are both supplied, the canonical one wins (`volOfVol` over `sigma`, `integrationPoints` over `hestonOrder`). On `/v1/compute/greeks`, the volatility Greeks (`vega`, `vomma`, `vanna`, `veta`, `zomma`, `ultima`, `dcharmDvol`) are taken with respect to the model`s own instantaneous volatility `sqrt(v0)`, not the request `sigma`. With `v0` omitted the two coincide, since `v0` then defaults to `sigma^2`. Note that `sigma` stops influencing the Heston price only once BOTH `v0` and `theta` are supplied - supplying `v0` alone leaves `theta` defaulting to `sigma^2`, so `sigma` still moves the price through the long-run variance (with `v0` = 0.09 and `theta` omitted, `sigma` of 0.1 / 0.2 / 0.4 prices 9.4348 / 10.8509 / 15.0789).\n- **sabr:** `sabrAlpha` / `alpha`, `sabrBeta` / `beta`, `sabrRho` / `rho`, `sabrNu` / `nu`, `approximationMethod` (hagan | obloj | paulot, default hagan), `shift`, `expansionOrder`, `useSmallTimeCorrection`, `fixBeta`, `fixedBetaValue`, `atmReference`, `volFloor`, `useArbitrageChecks`\n- **fft:** `processType` (blackScholes | merton | varianceGamma | heston | kou | bates), `N`, `alpha`, `eta`, `integrationMethod` (legacy aliases: `fftGridSize`, `fftAlpha`, `fftEta`, `fftIntegrationMethod`). Process-specific params match the webapp: Merton `mertonLambda`, `mertonMuJ`, `mertonSigmaJ`; Variance Gamma `vgSigma`, `vgNu`, `vgTheta`; Heston `hestonV0`, `hestonKappa`, `hestonTheta`, `hestonXi`, `hestonRho`; Kou `kouLambda`, `kouP`, `kouEta1`, `kouEta2`; Bates `batesV0`, `batesKappa`, `batesTheta`, `batesSigmaV`, `batesRho`, `batesLambda`, `batesMuJ`, `batesSigmaJ`\n- **vg:** `sigma` / `vgSigma`, `nu` / `vgNu`, `theta` / `vgTheta`, optional `method`, `fftPoints`, `alpha`, `eta`, `cacheFFT`, `weighting`\n- **jd:** `modelType` / `jdModel` (kou | merton | bates, default kou; any other value is rejected with a 422 rather than falling back to kou). Merton/Kou accept `baseVolatility` as the diffusion sigma override. Kou: `lambda`, `pUp`, `etaUp`, `etaDown`, optional `tailTolerance` / `tailTol`, `maxK`, `forceFFT`, `fftGridSize`. Merton: `lambda`, `muJ`, `sigmaJ`, optional `maxPoisson`. Bates: `v0`, `kappa`, `theta`, `sigmaV` / `volOfVol` / `xi`, `rho`, `lambda`, `muJ`, `sigmaJ`, optional `forceExactCF`, `fftGridSize`. Jump defaults when omitted: `lambda` = 0.1, `muJ` = -0.05, `sigmaJ` = 0.15, `pUp` = 0.5, `etaUp` = `etaDown` = 10, `maxK` = 30.\n- **binomial:** `steps`, `enableAmerican` / `isAmerican`, `treeType` (CRR | JR | LR, default LR), optional Richardson controls `useRichardsonExtrap`, `richardsonMode`, `stepMultiplier`, `extrapOrder`, and discrete-dividend inputs either as `dividends` array or the webapp-style `useDiscreteDividends`, `exDividendDates`, `dividendAmounts`. The public API uses the ex-date discrete-dividend model. With a discrete dividend, `theta` and the time cross-Greeks (`charm`, `veta`, `color`, `dcharmDvol`) are taken in calendar time: the valuation date moves, the expiry and every ex-date coming nearer together, so a payment keeps its distance to expiry. A schedule that moves the stock further below the nodes of the tree than one request allows (a payment large against the node spacing of the volatility: 50 paid after a day on a stock at 100, a volatility of 0.01, 30 days, 2000 steps) is rejected with a 422 `COMPUTE_BUDGET_EXCEEDED` rather than priced on fewer nodes; fewer `steps` need fewer, and `/v1/compute/greeks`, whose finite differences price larger trees, can reject a schedule `/v1/compute/price` accepts. `steps` and `enableAmerican` / `isAmerican` are also accepted as top-level request fields; where both are supplied the `modelParams` spelling wins, because the generated SDKs populate the top-level pair with their own defaults even when the caller never set them. `treeType` selects the lattice construction: `CRR` is Cox-Ross-Rubinstein; `JR` keeps equal-magnitude CRR up/down factors (`u·d = 1`) and puts drift into the risk-neutral probability (this is NOT the equal-probability Jarrow-Rudd 1983 tree, which puts drift into `u`/`d` with `p = 1/2` and breaks finite-difference cross-Greeks because `u·d ≠ 1`); `LR` is Leisen-Reimer with Peizer-Pratt inversion method 2 (with a discrete dividend, inverted at the moneyness at expiry: the spot against the strike plus the value of the payments then, moved back toward the money where its d2 falls under -4, along a smooth ramp toward -5: up to the moneyness of the spot itself in full and past it by the share 1 - e^-m of the rest, m the move of the payments in units of sigma sqrt(T), so with a small payment a spot deep in the wing keeps near its own; an American call, which with a positive rate and no continuous yield is exercised only just before a payment, at the spot itself), is the DEFAULT when `treeType` is omitted, and rounds an even `steps` UP to the next odd count, except at the public 2000-step ceiling where up is unavailable so it rounds DOWN to 1999 (same rule the engine applies at its own higher MAX_BINOMIAL_STEPS). `exDividendDates` entries may be given in YEARS or in DAYS to the ex-date, and a bare number cannot say which - `2.5` on a 3-year option is a legitimate 2.5 days and a legitimate 2.5 years, and the two price differently. Set `dividendTimeUnit` (alias `exDividendTimeUnit`) to `days` or `years` to say which; any other value is rejected with a 422. When it is omitted the legacy rule applies unchanged: entries greater than 2 are read as DAYS, entries of 2 or less as YEARS. Under either reading, an entry that falls after expiry is dropped because it cannot affect the price. Greek accuracy, on the default `LR`: `delta`, `vega`, `rho`, `vanna`, `vomma` and `ultima` match Black-Scholes to better than 0.05% at the money, and `theta`, `charm`, `veta` and `dcharmDvol` to better than 0.15%. `gamma` converges from 1.13% at 50 steps to 0.04% at 1600. `speed`, `zomma` and `color` are the loosest, measured 28.4%, 6.7% and 7.0% at 50 steps, 7.7%, 1.5% and 1.6% at the default 200, and 0.96%, -0.02% and 0.01% at 1600; raise `steps` when the third-order Greeks matter. Away from the money the worst of the seventeen at 200 steps is `zomma` at 20.4%, then `speed` at 9.2% and `color` at 8.9%, with everything else inside 1.2%. Accuracy degrades at low volatility, where these Greeks are also small in absolute terms.\n\n  **`CRR` and `JR` take their Greeks off trees that share the nodes of the lattice.** Cox-Ross-Rubinstein centres its lattice on SPOT with `u·d = 1`, so a node lands on the strike only where the spot is a whole number of node spacings from it; a bumped reprice at the same step count moves the kink of the payoff between the nodes, and a finite difference across it measures that motion rather than the option (at K=100, sigma=0.2, 200 steps, `vanna` read about -0.095 whether the true value is +1.43 at S=80 or -0.96 at S=120). The stencil therefore keeps the node spacing: the spot points are whole node spacings apart, a vol bump is a change of step count at the same spacing (the time level the own steps of each tree), each payment on the own step of each tree (one between two steps read on the trees paying it on each, blended), the derivatives Fornberg weights on those points; `vomma` and `ultima` follow the path that keeps the place of the kink of the payoff between the nodes (the strike, plus a payment at expiry; for an American call with a payment at expiry the strike or the strike plus the payment, whichever reads four times smoother along its path by the fourth differences of the price over the vol steps (a kink crossing a node reads as a corner), else the strike plus the payment under the rate step K (e^(r dt) - 1) and the strike from it, the strike alone where every payment is on the last step or between it and the one before, the rate is not negative and each tree of the blend pays on each of those two steps nothing, or at least the rate step and more than K (e^h - 1) at every vol read (the holder then exercises the step before each payment wherever in the money), the vol steps about the vol unless those on one side read four times smoother where the payment nears the continuation at the strike, K (e^h - 1) with h the node spacing, or lies between it and the rate step when every payment is on the last step or between it and the one before and the rate is not negative (the trees price no yield beside a cash payment), fourth differences under the rounding of the trees (16 eps (n P + sqrt(n) (S + K)), P the largest price read, and 16 eps n S more on JR) reading as that rounding, the vol step 0.001 or a twentieth of a vol under 0.02; the spot moving with the vol bump, the spot terms taken back out by the chain rule), `ultima` blending into the trees sharing the nodes beyond a kink 0.75 to 1.25 sigma sqrt(t) away. Against Black-Scholes over 336 cells (S 80 to 120, vols 0.1 to 0.6, 2 days to a year, 200 steps), the worst error: `vega` 0.7%, `vanna` 3.1%, `zomma` 3.3%, `speed` 3.7%, `theta` 4.8%, `veta` 5.8%, `charm` 10.2%, `dcharmDvol` 22.8%, `vomma` 23.9%, `ultima` 55% (JR 22%), the medians under 1.7%; with one cash dividend (240 cells, calendar time) `vega` 0.7%, `vanna` 2.0%, `zomma` 5.0%, `speed` 2.8%, `veta` 1.4%, `theta` 3.0%, `charm` 6.1%, `vomma` 18.5% (2 cells over 10%), `dcharmDvol` 16.7% (24 cells over 10%), and `ultima` reads the place of the payment between the nodes (245% at worst, 63 cells over 10%; raise `steps`). `CRR` price, `delta`, `gamma` and `rho` are the own values of the tree, as before; `theta` comes off the trees sharing the nodes too (the native step at the held count respaced them: 33.7% at worst over the 336 cells). The default `LR` pins a node on the strike and stays the better lattice for the cross-Greeks without a dividend (`vanna` 1.5%, `vomma` 0.7% on the 336 cells); with one, `CRR` reads the vol Greeks of second and third order better (`LR` on the 240 cells: `vomma` 351% at worst with 122 cells over 10%, `ultima` 567% and 101, `dcharmDvol` 46% and 20, `speed` 15% and 34); `CRR` is retained because it is the canonical textbook construction that callers cross-check against, and `JR` shares its `u·d = 1` geometry.\n- **pde:** `forceMethod` / `pdeForceMethod` (`analytical` | `pde` | `pde-with-fallback`, normalized case-insensitively; unsupported values return 422), `accuracyThreshold` / `pdeAccuracyThreshold` (non-negative; malformed or negative values return 422), plus grid controls `spaceSteps`, `timeSteps`, `sMin`, `sMax`, `gridSpacing`, `rannacherSteps`\n- **mc:** `paths` / `mcPaths` / `nPaths`, `steps` / `stepsPerPath` / `timeSteps` / `nSteps`, `seed` / `mcSeed`, `process` / `processType` (`blackscholes` | `jumpdiffusion` | `meanreverting` | `heston` | `localvolcev` | `localvoldupire`; aliases such as `BlackScholes`, `Merton`, `LocalVolatility`, `Dupire`, and `CEV` are normalized), top-level process params or nested `processParams`, `useAntithetic`, `useControlVariate`, `useImportanceSampling`, `useMomentMatching`, `useQMC`, `qmcType` (`sobol` | `halton`; other values return 422 `INVALID_MODEL_PARAM`). `processType`, `qmcType`, and `rngMethod` must be strings when supplied; arrays, booleans, and objects return 422 rather than being string-coerced. `rngMethod: SobolTrue` is normalized to Sobol QMC; non-QMC browser RNG labels fall back to the standard server RNG path. Monte Carlo pricing in the API is European-only. Browser-only execution flags such as `useGPU`, `batchSize`, and `parallelThreads` are ignored server-side. Nested `processParams` may supply process-specific fields but cannot override the validated request coordinates `S`, `r`, `q`, `sigma`, or `T`. QMC dimension is the path step count: Sobol supports at most 40 `nSteps` and Halton at most 10. A larger value (including the 252-step non-GBM default when `nSteps` is omitted) returns a 422 `INVALID_MODEL_PARAM` rather than silently running the pseudo-random path or surfacing a generator error.\n\n  `seed` / `mcSeed` is validated rather than coerced: it must be an integer with `|seed| < 2^52` and must not be 0. Zero is rejected because the engine builds its generator with `seed || Date.now()`, so a zero seed silently becomes the wall clock - and on `/v1/compute/greeks` the seed is reused across every bumped evaluation to give common random numbers, so a wall-clock seed would make each bump draw a different stream and the Greeks would measure Monte Carlo noise rather than the bump. Fractional, out-of-range, non-numeric and array/boolean/object values return a `422` with `code: \"INVALID_MODEL_PARAM\"`; a numeric string is accepted only when it spells a plain integer (`\"1337\"` yes, `\"1.5\"` no). On the standard pseudo-random path the generator reduces the seed to 32 bits, so seeds differing by a multiple of 2^32 are the same seed. That equivalence does NOT extend to the QMC paths (`useQMC` with Sobol or Halton): those initializers scale the raw seed before reducing it, and above 2^53 / 1664525 the multiply loses precision, so two seeds a multiple of 2^32 apart diverge - a call at S = K = 100 (r 0.05, q 0.02, a vol of 0.2, a year), 1,000 paths of 8 steps without the control variate, prices 9.3201 vs 9.3904 under Sobol and 9.4955 vs 9.2343 under Halton at seeds 1 and 1 + 1000x2^32, against an identical 9.0763 on the standard path. Repeating the same seed is deterministic on every path, and on every supported `processType`. With a valid seed, repeating a request returns the identical price.\n  Two of the six processes carry their own instantaneous-volatility input: `heston` reads `v0` (the instantaneous variance, aliased `hestonV0`; where both spellings are present `hestonV0` wins, matching the process itself) and `meanreverting` reads `meanRevertSigma`. Either may be a number or a non-blank numeric string; accepted strings are normalized before pricing so `/price` and `/greeks` use the same value. Supplied non-numeric, blank, or negative values return a 422 `INVALID_MODEL_PARAM` on both endpoints rather than being quietly replaced. Heston permits the valid boundary `v0 = 0`; mean-reverting requires `meanRevertSigma > 0` because its engine treats zero as omission. A request-level `sigma = 0` is likewise preserved rather than defaulted to 0.2, and omitted Heston `v0` / `theta` then derive as zero. Explicit Heston `theta = 0` and `sigmaV = 0` are also preserved rather than replaced by their defaults.\n  On `/v1/compute/greeks`, the volatility Greeks (`vega`, `vanna`, `vomma`, `veta`, `zomma`, `ultima`, `dcharmDvol`) are differentiated with respect to whichever state the process actually reads: `sqrt(v0)` for Heston (matching the semi-analytic `heston` model), `meanRevertSigma` for mean-reverting, and the request `sigma` for every other process. With explicit Heston `v0`, only that state moves and request `sigma` stays fixed, so an omitted long-run variance `theta` remains at the value `/price` derived from request `sigma`. With `v0` omitted, the stencil rewrites its implicit `v0 = sigma^2`; an implicit `theta = sigma^2` moves with it, preserving the pre-existing derivative coordinate. The scaled step keeps ordinary positive values in range. At `v0 = 0`, and at request `sigma = 0` for the five generic-volatility processes, the centered stencil uses the even continuation in volatility rather than sending a negative magnitude to the engine. A positive value so small that the second- or third-order finite-difference denominator underflows can still be priced, but `/greeks` returns a 422 `INVALID_MODEL_PARAM` instead of publishing sanitized zero derivatives.\n- **localvol:** PDE-only public surface. Supported params: `impliedVolData` (array or JSON string), `impliedVolDataArray`, `useDupire`, `useAmerican`, `interpolation` (essvi | linear | svi | dupire; cubic is no longer supported), `spotSteps` / `pdeGridSize`, `timeSteps` / `pdeTimeSteps`, `rannacherSteps`, `regularizationParam`, `localVolBeta` / `beta` / `cevBeta`, `cevScale`, `minVol` / `dupireMinVol`, `maxVol` / `dupireMaxVol`, `ticker`. Without implied vol data the local vol is CEV, `cevScale * (S / S0)^(localVolBeta - 1)`, normalized at the request's spot `S0` so every strike is priced under one process; `cevScale` defaults to `sigma`\n- **barrier:** `barrierType` (up-out | down-out | up-in | down-in | double-out | double-in), `barrierLevel`, `rebate`, `monitoringType` (continuous | discrete | window), `monitoringFreq`, `upperBarrier`, `lowerBarrier`, `upperRebate`, `lowerRebate`, `windowStart`, `windowEnd`\n- **asian:** `averagingType` (arithmetic | geometric), `strikeType` (fixed | floating), `method` (curran | geometric; `mc`/`montecarlo` requests are normalized to curran server-side), `numObservations` (omitted and zero use the pricer's `floor(252 * t)` default - `ASIAN_DEFAULTS` carries `0`, so zero does not mean \"one fixing\"; positive values truncate toward zero, a result below 1 retains the zero/default behavior, and the effective count clamps to 1..2048; negative, non-finite, empty, boolean, array and object values return 422 `INVALID_MODEL_PARAM`), `observationFreq`, `observationDates` (array or JSON-encoded array of future times to each fixing in years from the valuation time; it must contain at least one date, and dates must be finite, positive, strictly increasing and no later than `t`; malformed/non-array/empty values, violations of those rules, and schedules over 2048 entries return 422 rather than silently using or truncating the generated schedule. On `/greeks`, elapsed finite-difference time is subtracted from every date, explicit or derived, preserving the calendar spacing; the step is shortened when needed so it cannot pass the first fixing. An omitted schedule is materialized once at the requested tenor and then shifted the same way, so the time Greeks measure the decay of the position held rather than a family of contracts re-specified at each bumped tenor; this can change time Greeks materially compared with the old rescaled-schedule behavior. `observationDates` now also applies to `averagingType: \"arithmetic\"`, which previously derived its schedule from `(t, numObservations)` alone and ignored the parameter; where a schedule is supplied its length defines the future fixing count, matching the geometric path), `pastFixings`, `runningAverage`, `runningSum`, `fixingsElapsed`. `fixingDates` and `observations` are accepted aliases for the observation COUNT, not for a schedule; passing an array to either returns 422\n- **lookback:** `lookbackType` (floating | fixed), `currentMax`, `currentMin`, `monitoringType` / `monitoring`, `monitoringFrequency`, `method`\n- **digital:** `type` / `digitalType` — accepts either short form (`cash` | `asset` | `gap`) or long form (`cash-or-nothing` | `asset-or-nothing` | `gap`); both are equivalent server-side. Also `cashAmount`, `gapAmount`, `smoothing` (clamped server-side to a minimum of 1e-4), `method`\n- **compound:** `compoundType` (call-on-call | call-on-put | put-on-call | put-on-put), `underlyingStrike`, `firstExpiry`, `secondExpiry` (defaults to request `t`), `method`, `mcPaths`, `mcSeed`, `useAntithetic`, `useControlVariate`. Requires 0 < `firstExpiry` < `secondExpiry`; violations are rejected with a 422 on both `/price` and `/greeks`. A supplied `mcPaths` is clamped to 2..1000000; when it is omitted the pricer applies its own default of **10000** paths, so omitting it is not the same as sending 100000. The lower bound is 2 rather than 1 because the antithetic path pairs `floor(mcPaths / 2)` draws, and a single path yields none. `mcSeed` does not clamp: it must be an integer with `|mcSeed| < 2^52` and must not be 0 (the pricer reads `mcSeed || Date.now()`, so a zero seed would silently become the wall clock). Fractional, out-of-range, non-numeric and array/boolean/object values are rejected with a 422. A numeric string is accepted only when it spells a plain integer: `\"1337\"` yes, `\"1.0000000000000001\"` no. Two limits worth knowing rather than discovering. First, the seed is reduced to 32 bits by the generator, so seeds differing by a multiple of 2^32 are the same seed. Second, a JSON number literal is rounded to a double by the parser before the API ever sees it, so a fraction finer than the double spacing at your magnitude is already gone and no server-side check can recover it - `1.0000000000000001` arrives as `1`. That is why seeds at or above 2^52 are refused outright (there the spacing reaches 1, so any fractional literal has already become an integer), and why the string form is the exact one at every magnitude.\n- **chooser:** `chooserType` (simple | complex; anything else is a 422), `choiceTime`, `maturity`, `callStrike`, `putStrike`, `callMaturity`, `putMaturity`, `method`, `mcPaths`, `rngSeed` / `seed` / `mcSeed`, `useAntithetic`, `useControlVariate`. `choiceTime` must be positive. A **simple** chooser additionally requires `maturity` > `choiceTime`; a **complex** chooser requires `callMaturity` > `choiceTime` and `putMaturity` > `choiceTime` (`maturity` only supplies their default). Violations are rejected with a 422 on both `/price` and `/greeks`. A supplied `mcPaths` is clamped to 2..1000000, but note the effective floor is higher: the chooser pricer runs `max(mcPaths, 20000)` paths, so any value below 20000 - including the 10000 it defaults to when omitted - executes at 20000. Monte Carlo pricing is deterministic: `rngSeed` (also accepted as `seed` or `mcSeed`) defaults to 1337, and repeating a request returns the same price. It must be an integer with `|seed| < 2^52`; fractional, non-numeric, and array/boolean/object values return a 422, and a numeric string is accepted only when it spells a plain integer (`\"1337\"` yes, `\"1.5\"` no). Unlike `mc`, `compound` and `multiasset`, a seed of **0 is accepted** here: this engine tests for `undefined`/`null` rather than falsiness and its Mulberry32 generator adds a constant before first use, so state 0 is a working stream rather than a silent fallback to the wall clock. The generator reduces the seed with `seed >>> 0`, so seeds differing by a multiple of 2^32 are the same seed. On `/v1/compute/greeks` the seed is reused across every bumped evaluation and the same resolved seed is used by the optional insight repricer, so both remain deterministic and the Greeks measure the bump rather than sampling noise.\n- **multiasset:** `payoffType` / `type` / `multiAssetType` (basket | spread | max | min), `numAssets`, `correlation`, `corrMatrix` / `correlationMatrix`, `prices[]`, `volatilities[]`, `dividends[]`, `weights[]`, `method`, `mcPaths`, `seed`, `useAntithetic`, `useControlVariate`, `useSobol`. If `prices[]` is omitted, the request spot `S` is used as the first asset price. Monte Carlo pricing is deterministic: `seed` defaults to 1337, and repeating a request returns the same price. `seed` must be an integer whose unsigned 32-bit value is non-zero - the generator is seeded with `seed >>> 0`, so 0 and any multiple of 2^32 are rejected with a 422, as are non-integer, non-numeric, and out-of-range values at or above 2^52. A numeric string is accepted only when it spells a plain integer: `\"1337\"` yes, `\"1.0000000000000001\"` no. One limit no server-side check can close: a JSON number literal is rounded to a double by the parser before it reaches the API, so a fraction finer than the double spacing at your magnitude is already gone - `1.0000000000000001` arrives as `1`. That is why the 2^52 bound exists (at and above it the spacing reaches 1, so a fractional literal has already become an integer) and why the string form is the exact one at every magnitude. The remaining numeric knobs do normalize rather than reject: `mcPaths` is clamped to 1..1000000 and defaults to 100000. `numAssets` resolves to the LARGEST of the explicit value (truncated toward zero, or 2 when omitted) and the lengths of any supplied `prices[]` / `volatilities[]` / `dividends[]` / `weights[]`, capped at 32 - so `numAssets: 2` with three prices resolves to three assets, and an omitted count with a single price still resolves to two. Each of those arrays is then padded or truncated to the resolved count using the request `S` / `sigma` / `q` and equal weights.",
         "tags": [
           "Compute"
         ],
@@ -522,11 +522,18 @@
             }
           },
           "403": {
-            "description": "API key lacks the required scope for this endpoint",
+            "description": "Insufficient scope or tier, or the broker explicitly refused the market for want of a data entitlement on your account (BROKER_ENTITLEMENT_MISSING)",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ScopeError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ScopeError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/BrokerError"
+                    }
+                  ]
                 }
               }
             }
@@ -561,7 +568,7 @@
             }
           },
           "429": {
-            "description": "Rate limit or compute concurrency limit exceeded",
+            "description": "Rate limit or compute concurrency limit exceeded, or the broker rate-limited the request (BROKER_RATE_LIMITED)",
             "content": {
               "application/json": {
                 "schema": {
@@ -574,8 +581,19 @@
                     },
                     {
                       "$ref": "#/components/schemas/CalibrationQuotaError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/BrokerError"
                     }
                   ]
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until the client can retry: the rate-limit or quota window reset, or the wait the broker named (`BROKER_RATE_LIMITED`; no header when the broker named none)",
+                "schema": {
+                  "type": "integer"
                 }
               }
             }
@@ -590,8 +608,18 @@
               }
             }
           },
+          "502": {
+            "description": "The broker refused the request itself (BROKER_REJECTED): an HTTP 4xx other than 408, 409, 425 and 429 that no retry fixes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrokerError"
+                }
+              }
+            }
+          },
           "503": {
-            "description": "Service unavailable — worker pool draining or broker connection failed",
+            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
             "content": {
               "application/json": {
                 "schema": {
@@ -1204,11 +1232,18 @@
             }
           },
           "403": {
-            "description": "API key lacks the required scope for this endpoint",
+            "description": "Insufficient scope or tier, or the broker explicitly refused the market for want of a data entitlement on your account (BROKER_ENTITLEMENT_MISSING)",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ScopeError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ScopeError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/BrokerError"
+                    }
+                  ]
                 }
               }
             }
@@ -1243,7 +1278,7 @@
             }
           },
           "429": {
-            "description": "Rate limit or compute concurrency limit exceeded",
+            "description": "Rate limit or compute concurrency limit exceeded, or the broker rate-limited the request (BROKER_RATE_LIMITED)",
             "content": {
               "application/json": {
                 "schema": {
@@ -1256,8 +1291,19 @@
                     },
                     {
                       "$ref": "#/components/schemas/CalibrationQuotaError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/BrokerError"
                     }
                   ]
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until the client can retry: the rate-limit or quota window reset, or the wait the broker named (`BROKER_RATE_LIMITED`; no header when the broker named none)",
+                "schema": {
+                  "type": "integer"
                 }
               }
             }
@@ -1272,8 +1318,18 @@
               }
             }
           },
+          "502": {
+            "description": "The broker refused the request itself (BROKER_REJECTED): an HTTP 4xx other than 408, 409, 425 and 429 that no retry fixes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrokerError"
+                }
+              }
+            }
+          },
           "503": {
-            "description": "Service unavailable — worker pool draining or broker connection failed",
+            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
             "content": {
               "application/json": {
                 "schema": {
@@ -1519,6 +1575,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceUnavailableError"
+                }
+              }
+            }
           }
         }
       }
@@ -1726,6 +1792,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceUnavailableError"
+                }
+              }
+            }
           }
         }
       }
@@ -1881,6 +1957,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceUnavailableError"
+                }
+              }
+            }
           }
         }
       }
@@ -2025,6 +2111,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/InternalError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceUnavailableError"
                 }
               }
             }
@@ -2183,6 +2279,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceUnavailableError"
+                }
+              }
+            }
           }
         }
       }
@@ -2317,6 +2423,16 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceUnavailableError"
+                }
+              }
+            }
           }
         }
       }
@@ -2325,7 +2441,7 @@
       "post": {
         "operationId": "compute.probability",
         "summary": "Risk-neutral + lognormal probability distributions",
-        "description": "Compute the implied probability distribution of the underlying at expiration. Returns BOTH the risk-neutral distribution (eSSVI + Breeden-Litzenberger with finite-difference fallback) AND a lognormal baseline, plus statistics (implied move, range bounds, fair value). Supports two modes:\n\n- **simple**: Pre-computed strikes + IVs (no broker needed)\n- **full**: BYOK broker credentials; API fetches live chain across multiple expirations and calibrates eSSVI\n\n### Data requirements\n\nAt least **5 strikes** are required. The Breeden-Litzenberger second difference is taken on interior points only, so N strikes yield N-2 density points and the extractor needs 3 of them. The public request validator returns 400 for fewer than 5; broker chains that prepare fewer than 5 usable strikes return 422 `INSUFFICIENT_DISTRIBUTION_DATA`.\n\nIn `mode: \"simple\"`, every strike must carry a positive `iv`; an unusable value is rejected rather than substituted, because that strike's call price feeds the second difference and would bend the whole published density. In `mode: \"full\"`, an `expiration` that is not listed for the symbol returns a 422 `UNKNOWN_EXPIRATION` rather than being silently swapped for the front month; a listed expiration after its 4:00 p.m. `America/New_York` close returns 422 `EXPIRED_EXPIRATION` rather than being repriced at a one-day floor.\n\nWhen the density cannot be extracted, `riskNeutral.pdf` is empty, `riskNeutral.stats` is `null`, and `riskNeutral.fallbackReason` carries the reason. `lognormal.stats` is `null` when the chain has no usable implied volatilities to average.\n\n### Required headers for `mode: \"full\"`\n\n- **Tradier** (1 credential header) — uses a static Production Access Token:\n  - `X-Broker-Type: tradier`\n  - `X-Tradier-Key: <your Tradier production access token>`\n- **Tastytrade** (2 credential headers) — uses OAuth 2.0 refresh-token flow. The server posts `{grant_type: \"refresh_token\", refresh_token, client_secret}` to Tastytrade's token endpoint to mint a short-lived access token, which is reused until near expiry. Both values must come from the **same Tastytrade OAuth app**:\n  - `X-Broker-Type: tastytrade`\n  - `X-Tastytrade-Refresh-Token: <OAuth refresh token from your Tastytrade OAuth app>`\n  - `X-Tastytrade-Client-Secret: <OAuth client secret from the SAME Tastytrade OAuth app>`\n- **Schwab** (3 credential headers) — per-user-app OAuth 2.0 (BYOK). Register your own Schwab app and bring its `client_id` + `client_secret` plus a `refresh_token` from the Schwab OAuth redirect. The server exchanges them (HTTP Basic auth) for a ~30-minute access token, reused until near expiry. All three must come from the **same Schwab app**:\n  - `X-Broker-Type: schwab`\n  - `X-Schwab-Refresh-Token: <refresh token from your Schwab OAuth app>`\n  - `X-Schwab-Client-Id: <client id of the SAME Schwab app>`\n  - `X-Schwab-Client-Secret: <client secret of the SAME Schwab app>`\n\n`mode: \"simple\"` requires no headers. Public.com is not supported on the API tier.\n\nCredential sources: Tradier → https://docs.tradier.com/docs/getting-started · Tastytrade → https://developer.tastytrade.com/oauth/ · Schwab → https://developer.schwab.com/",
+        "description": "Compute the implied probability distribution of the underlying at expiration. Returns BOTH the risk-neutral distribution (eSSVI + Breeden-Litzenberger with finite-difference fallback) AND a lognormal baseline, plus statistics (implied move, range bounds, fair value). Supports two modes:\n\n- **simple**: Pre-computed strikes + IVs (no broker needed)\n- **full**: BYOK broker credentials; API fetches live chain across multiple expirations and calibrates eSSVI. A broker failure answers as on `/v1/compute/calibrate` (400 `BROKER_CREDENTIAL_INVALID`, 403 `BROKER_ENTITLEMENT_MISSING`, 429 `BROKER_RATE_LIMITED`, 502 `BROKER_REJECTED`, 503 `BROKER_UNAVAILABLE`; body `BrokerError`)\n\n### Data requirements\n\nAt least **5 strikes** are required. The Breeden-Litzenberger second difference is taken on interior points only, so N strikes yield N-2 density points and the extractor needs 3 of them. The public request validator returns 400 for fewer than 5; broker chains that prepare fewer than 5 usable strikes return 422 `INSUFFICIENT_DISTRIBUTION_DATA`.\n\nIn `mode: \"simple\"`, every strike must carry a positive `iv`; an unusable value is rejected rather than substituted, because that strike's call price feeds the second difference and would bend the whole published density. In `mode: \"full\"`, an `expiration` that is not listed for the symbol returns a 422 `UNKNOWN_EXPIRATION` rather than being silently swapped for the front month; a listed expiration after its 4:00 p.m. `America/New_York` close returns 422 `EXPIRED_EXPIRATION` rather than being repriced at a one-day floor.\n\nWhen the density cannot be extracted, `riskNeutral.pdf` is empty, `riskNeutral.stats` is `null`, and `riskNeutral.fallbackReason` carries the reason. `lognormal.stats` is `null` when the chain has no usable implied volatilities to average.\n\n### Required headers for `mode: \"full\"`\n\n- **Tradier** (1 credential header) — uses a static Production Access Token:\n  - `X-Broker-Type: tradier`\n  - `X-Tradier-Key: <your Tradier production access token>`\n- **Tastytrade** (2 credential headers) — uses OAuth 2.0 refresh-token flow. The server posts `{grant_type: \"refresh_token\", refresh_token, client_secret}` to Tastytrade's token endpoint to mint a short-lived access token, which is reused until near expiry. Both values must come from the **same Tastytrade OAuth app**:\n  - `X-Broker-Type: tastytrade`\n  - `X-Tastytrade-Refresh-Token: <OAuth refresh token from your Tastytrade OAuth app>`\n  - `X-Tastytrade-Client-Secret: <OAuth client secret from the SAME Tastytrade OAuth app>`\n- **Schwab** (3 credential headers) — per-user-app OAuth 2.0 (BYOK). Register your own Schwab app and bring its `client_id` + `client_secret` plus a `refresh_token` from the Schwab OAuth redirect. The server exchanges them (HTTP Basic auth) for a ~30-minute access token, reused until near expiry. All three must come from the **same Schwab app**:\n  - `X-Broker-Type: schwab`\n  - `X-Schwab-Refresh-Token: <refresh token from your Schwab OAuth app>`\n  - `X-Schwab-Client-Id: <client id of the SAME Schwab app>`\n  - `X-Schwab-Client-Secret: <client secret of the SAME Schwab app>`\n- **moomoo** (1 credential header) - the API token from the moomoo card on your Account page: moomoo's read-only sign-in, sealed to your account, so it works only with API keys on the account that connected moomoo. Connecting moomoo again replaces it. moomoo serves US option quotes in real time only once the account holds assets or a US position; until then its option quotes may be delayed (about 15 minutes) with nothing in the data to say so, so a fit on such an account can use delayed prices. A market moomoo explicitly refuses answers 403 `BROKER_ENTITLEMENT_MISSING`:\n  - `X-Broker-Type: moomoo`\n  - `X-Moomoo-Sealed-Token: <the API token from the moomoo card>`\n\n`mode: \"simple\"` requires no headers. Public.com is not accepted in these headers; see the BYOK note for where it is.\n\nCredential sources: Tradier → https://docs.tradier.com/docs/getting-started · Tastytrade → https://developer.tastytrade.com/oauth/ · Schwab → https://developer.schwab.com/ · moomoo → the moomoo card on your Account page (https://www.optionsanalysissuite.com/account)",
         "tags": [
           "Compute"
         ],
@@ -2339,10 +2455,11 @@
               "enum": [
                 "tradier",
                 "tastytrade",
-                "schwab"
+                "schwab",
+                "moomoo"
               ]
             },
-            "description": "Required for `mode: full` (tradier, tastytrade, or schwab). Public.com is not supported on the API tier (their Individual API program restricts third-party platforms)."
+            "description": "Required for `mode: full` (tradier, tastytrade, schwab, or moomoo). Public.com is not accepted in these headers; see the BYOK note."
           },
           {
             "name": "X-Tradier-Key",
@@ -2397,6 +2514,15 @@
               "type": "string"
             },
             "description": "Required for `mode: full` with `X-Broker-Type: schwab`. The client secret of the SAME Schwab app, exchanged with the refresh token to mint a short-lived access token."
+          },
+          {
+            "name": "X-Moomoo-Sealed-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required for `mode: full` with `X-Broker-Type: moomoo`. The API token from the moomoo card on your Account page (moomoo's read-only sign-in, sealed to your account); it works only with API keys on the account that connected moomoo."
           }
         ],
         "requestBody": {
@@ -2481,11 +2607,18 @@
             }
           },
           "403": {
-            "description": "API key lacks the required scope for this endpoint",
+            "description": "Insufficient scope or tier, or the broker explicitly refused the market for want of a data entitlement on your account (BROKER_ENTITLEMENT_MISSING)",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ScopeError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ScopeError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/BrokerError"
+                    }
+                  ]
                 }
               }
             }
@@ -2520,7 +2653,7 @@
             }
           },
           "429": {
-            "description": "Rate limit or compute concurrency limit exceeded",
+            "description": "Rate limit or compute concurrency limit exceeded, or the broker rate-limited the request (BROKER_RATE_LIMITED)",
             "content": {
               "application/json": {
                 "schema": {
@@ -2533,8 +2666,19 @@
                     },
                     {
                       "$ref": "#/components/schemas/CalibrationQuotaError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/BrokerError"
                     }
                   ]
+                }
+              }
+            },
+            "headers": {
+              "Retry-After": {
+                "description": "Seconds until the client can retry: the rate-limit or quota window reset, or the wait the broker named (`BROKER_RATE_LIMITED`; no header when the broker named none)",
+                "schema": {
+                  "type": "integer"
                 }
               }
             }
@@ -2548,6 +2692,26 @@
                 }
               }
             }
+          },
+          "502": {
+            "description": "The broker refused the request itself (BROKER_REJECTED): an HTTP 4xx other than 408, 409, 425 and 429 that no retry fixes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrokerError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceUnavailableError"
+                }
+              }
+            }
           }
         }
       }
@@ -2556,7 +2720,7 @@
       "post": {
         "operationId": "compute.calibrate",
         "summary": "Auto-calibrate model parameters from live chain data",
-        "description": "Fetches the live options chain from the specified broker (BYOK credentials via headers) and calibrates model parameters. Returns fitted parameters + calibration ID for reuse in `/price` and `/greeks` via the `calibrationId` field. Supports Heston, SABR, VG, JD, and Local Volatility (eSSVI multi-expiration surface).\n\n### Required headers by broker\n\n- **Tradier** (1 credential header) — uses a static Production Access Token:\n  - `X-Broker-Type: tradier`\n  - `X-Tradier-Key: <your Tradier production access token>`\n- **Tastytrade** (2 credential headers) — uses OAuth 2.0 refresh-token flow. The server posts `{grant_type: \"refresh_token\", refresh_token, client_secret}` to `https://api.tastyworks.com/oauth/token` to mint a short-lived access token, which is reused until near expiry; separately, calibration results themselves are cached for 30 seconds. Both credential values must come from the **same Tastytrade OAuth app** — the `client_secret` identifies which app issued the refresh token, so dropping either header fails the OAuth exchange:\n  - `X-Broker-Type: tastytrade`\n  - `X-Tastytrade-Refresh-Token: <OAuth refresh token from your Tastytrade OAuth app>`\n  - `X-Tastytrade-Client-Secret: <OAuth client secret from the SAME Tastytrade OAuth app>`\n- **Schwab** (3 credential headers) — per-user-app OAuth 2.0 (BYOK). The server posts `grant_type=refresh_token` with HTTP Basic auth over `client_id:client_secret` to `https://api.schwabapi.com/v1/oauth/token` to mint a ~30-minute access token, reused until near expiry. All three values must come from the **same Schwab app**:\n  - `X-Broker-Type: schwab`\n  - `X-Schwab-Refresh-Token: <refresh token from your Schwab OAuth app>`\n  - `X-Schwab-Client-Id: <client id of the SAME Schwab app>`\n  - `X-Schwab-Client-Secret: <client secret of the SAME Schwab app>`\n\nPublic.com is not supported on the API tier (their Individual API program restricts third-party platforms). Web-app Pro users can still use Public directly in the browser.\n\n**Market assumptions:** Supply `riskFreeRate` and `dividendYield`, or let the API resolve them from stored rate/dividend data. If either remains unresolved, the public endpoint returns 422 `RESOLUTION_FAILED`; it never substitutes `0.05` or `0`. A value that is SUPPLIED but not a number or a numeric string returns 422 `INVALID_MODEL_PARAM` naming the spelling you used, rather than being coerced - `true` and `\"\"` used to calibrate at a 100% and a 0% rate respectively. The resolved assumptions are included in the short-lived calibration cache key.\n\n**Failure semantics:** A chain with too few usable observations returns 422 `INSUFFICIENT_CALIBRATION_DATA`. A calibrator that reports fallback/default parameters, an explicit error, or no finite non-negative fit metric returns 422 `CALIBRATION_FAILED`; those parameters are not cached or returned with a fabricated zero RMSE. Upstream broker failures remain server errors rather than being relabelled as caller input defects.\n\n**Quotas:** Calibrations are hard-capped at **500 per day** per user (in addition to the 120/min compute rate limit). Over-quota returns `429 Too Many Requests` with a `Retry-After` header and a `CalibrationQuotaError` body. The quota window resets at midnight UTC. Cached calibration responses (30-second TTL per `credentials.type + symbol + model + expiration + modelParams + market assumptions` key) still count against the quota.",
+        "description": "Fetches the live options chain from the specified broker (BYOK credentials via headers) and calibrates model parameters. Returns fitted parameters + calibration ID for reuse in `/price` and `/greeks` via the `calibrationId` field. Supports Heston, SABR, VG, JD, and Local Volatility (eSSVI multi-expiration surface).\n\n### Required headers by broker\n\n- **Tradier** (1 credential header) — uses a static Production Access Token:\n  - `X-Broker-Type: tradier`\n  - `X-Tradier-Key: <your Tradier production access token>`\n- **Tastytrade** (2 credential headers) — uses OAuth 2.0 refresh-token flow. The server posts `{grant_type: \"refresh_token\", refresh_token, client_secret}` to `https://api.tastyworks.com/oauth/token` to mint a short-lived access token, which is reused until near expiry; separately, calibration results themselves are cached for 30 seconds. Both credential values must come from the **same Tastytrade OAuth app** — the `client_secret` identifies which app issued the refresh token, so dropping either header fails the OAuth exchange:\n  - `X-Broker-Type: tastytrade`\n  - `X-Tastytrade-Refresh-Token: <OAuth refresh token from your Tastytrade OAuth app>`\n  - `X-Tastytrade-Client-Secret: <OAuth client secret from the SAME Tastytrade OAuth app>`\n- **Schwab** (3 credential headers) — per-user-app OAuth 2.0 (BYOK). The server posts `grant_type=refresh_token` with HTTP Basic auth over `client_id:client_secret` to `https://api.schwabapi.com/v1/oauth/token` to mint a ~30-minute access token, reused until near expiry. All three values must come from the **same Schwab app**:\n  - `X-Broker-Type: schwab`\n  - `X-Schwab-Refresh-Token: <refresh token from your Schwab OAuth app>`\n  - `X-Schwab-Client-Id: <client id of the SAME Schwab app>`\n  - `X-Schwab-Client-Secret: <client secret of the SAME Schwab app>`\n- **moomoo** (1 credential header) - the API token from the moomoo card on your Account page: moomoo's read-only sign-in, sealed to your account, so it works only with API keys on the account that connected moomoo. Connecting moomoo again replaces it. moomoo serves US option quotes in real time only once the account holds assets or a US position; until then its option quotes may be delayed (about 15 minutes) with nothing in the data to say so, so a fit on such an account can use delayed prices. A market moomoo explicitly refuses answers 403 `BROKER_ENTITLEMENT_MISSING`:\n  - `X-Broker-Type: moomoo`\n  - `X-Moomoo-Sealed-Token: <the API token from the moomoo card>`\n\nPublic.com is not accepted in these headers; see the BYOK note. Web-app Pro users can also use Public directly in the browser.\n\n**Market assumptions:** Supply `riskFreeRate` and `dividendYield`, or let the API resolve them from stored rate/dividend data. If either remains unresolved, the public endpoint returns 422 `RESOLUTION_FAILED`; it never substitutes `0.05` or `0`. When the stored value could not be READ (an outage, not absence) it returns 503 `UPSTREAM_UNAVAILABLE` (retryable) naming it in `unreadFields`. A value that is SUPPLIED but not a number or a numeric string returns 422 `INVALID_MODEL_PARAM` naming the spelling you used, rather than being coerced - `true` and `\"\"` used to calibrate at a 100% and a 0% rate respectively. The resolved assumptions are included in the short-lived calibration cache key.\n\n**Failure semantics:** A chain with too few usable observations returns 422 `INSUFFICIENT_CALIBRATION_DATA`. A calibrator that reports fallback/default parameters, an explicit error, or no finite non-negative fit metric returns 422 `CALIBRATION_FAILED`; those parameters are not cached or returned with a fabricated zero RMSE. A broker failure is never a caller-input 422, and never the broker's own status: credentials the broker refuses return 400 `BROKER_CREDENTIAL_INVALID` (not retryable; fix the broker headers you sent), a market the broker explicitly refuses for want of a data entitlement on your account (a moomoo permission refusal) returns 403 `BROKER_ENTITLEMENT_MISSING` (not retryable; moomoo may instead serve delayed option quotes without refusing, see the moomoo headers above), a broker rate limit returns 429 `BROKER_RATE_LIMITED` with `retryAfterSeconds` and the same wait in the `Retry-After` header (null, and no header, when the broker named no wait), a request the broker refuses itself (an HTTP 4xx other than 408, 409, 425 and 429) returns 502 `BROKER_REJECTED`, and a broker that does not answer returns 503 `BROKER_UNAVAILABLE` (retryable); the last two carry `brokerFailure` and `brokerStatus`. The body is `BrokerError`, with no broker text, and the same answer comes back when auto-calibration on `/v1/compute/price` or `/v1/compute/greeks` reaches the broker.\n\n**Input refused before anything is spent:** An unusable option is rejected ahead of the concurrency slot and the quota reservation, so a refusal costs no calibration and no broker request. A `modelParams.jdModel` / `modelParams.modelType` that is not `kou`, `merton` or `bates` returns 422 `INVALID_CALIBRATION_OPTION` naming the value you sent - it is never silently calibrated as `kou`. An `expiration` that is well-formed but not a real calendar day (`2027-02-31`, `2027-00-00`) returns 400 `INVALID_EXPIRATION`; the format is checked against the calendar, not only against `YYYY-MM-DD`.\n\n**Quotas:** Calibrations are hard-capped at **500 per day** per user (in addition to the 120/min compute rate limit). Over-quota returns `429 Too Many Requests` with a `Retry-After` header and a `CalibrationQuotaError` body. The quota window resets at midnight UTC. Cached calibration responses (30-second TTL per `credentials.type + symbol + model + expiration + modelParams + market assumptions` key) still count against the quota.",
         "tags": [
           "Compute"
         ],
@@ -2570,10 +2734,11 @@
               "enum": [
                 "tradier",
                 "tastytrade",
-                "schwab"
+                "schwab",
+                "moomoo"
               ]
             },
-            "description": "Which broker to fetch chain data from. Public.com is not supported on the API tier."
+            "description": "Which broker to fetch chain data from. Public.com is not accepted in these headers; see the BYOK note."
           },
           {
             "name": "X-Tradier-Key",
@@ -2628,6 +2793,15 @@
               "type": "string"
             },
             "description": "Required when `X-Broker-Type: schwab`. The client secret of the SAME Schwab app, exchanged with the refresh token to mint a short-lived access token per calibration."
+          },
+          {
+            "name": "X-Moomoo-Sealed-Token",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required when `X-Broker-Type: moomoo`. The API token from the moomoo card on your Account page (moomoo's read-only sign-in, sealed to your account); it works only with API keys on the account that connected moomoo."
           }
         ],
         "requestBody": {
@@ -2752,11 +2926,18 @@
             }
           },
           "403": {
-            "description": "API key lacks the required scope for this endpoint",
+            "description": "Insufficient scope or tier, or the broker explicitly refused the market for want of a data entitlement on your account (BROKER_ENTITLEMENT_MISSING)",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ScopeError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ScopeError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/BrokerError"
+                    }
+                  ]
                 }
               }
             }
@@ -2791,7 +2972,7 @@
             }
           },
           "429": {
-            "description": "Rate limit OR calibration quota exceeded. Inspect the response body: if it has a `code: \"CALIBRATION_QUOTA_EXCEEDED\"` field, the user hit the daily calibration cap (500/day, resets midnight UTC). Otherwise it is a standard per-minute rate limit.",
+            "description": "Rate limit OR calibration quota exceeded, OR the broker rate-limited the request. Inspect the response body: `code: \"CALIBRATION_QUOTA_EXCEEDED\"` means the user hit the daily calibration cap (500/day, resets midnight UTC); `code: \"BROKER_RATE_LIMITED\"` means the broker refused for the caller's own broker quota (`BrokerError`, with `retryAfterSeconds`, and the same wait in `Retry-After` when the broker named one). Otherwise it is a standard per-minute rate limit.",
             "content": {
               "application/json": {
                 "schema": {
@@ -2804,6 +2985,9 @@
                     },
                     {
                       "$ref": "#/components/schemas/CalibrationQuotaError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/BrokerError"
                     }
                   ]
                 }
@@ -2811,7 +2995,7 @@
             },
             "headers": {
               "Retry-After": {
-                "description": "Seconds until the client can retry (rate limit window or quota window reset)",
+                "description": "Seconds until the client can retry: the rate-limit or quota window reset, or the wait the broker named (`BROKER_RATE_LIMITED`; no header when the broker named none)",
                 "schema": {
                   "type": "integer"
                 }
@@ -2828,8 +3012,18 @@
               }
             }
           },
+          "502": {
+            "description": "The broker refused the request itself (BROKER_REJECTED): an HTTP 4xx other than 408, 409, 425 and 429 that no retry fixes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrokerError"
+                }
+              }
+            }
+          },
           "503": {
-            "description": "Service unavailable — worker pool draining or broker connection failed",
+            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
             "content": {
               "application/json": {
                 "schema": {
@@ -2931,7 +3125,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining or broker connection failed",
+            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
             "content": {
               "application/json": {
                 "schema": {
@@ -3055,7 +3249,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining or broker connection failed",
+            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
             "content": {
               "application/json": {
                 "schema": {
@@ -3178,7 +3372,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining or broker connection failed",
+            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
             "content": {
               "application/json": {
                 "schema": {
@@ -3301,7 +3495,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining or broker connection failed",
+            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
             "content": {
               "application/json": {
                 "schema": {
@@ -3414,7 +3608,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining or broker connection failed",
+            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
             "content": {
               "application/json": {
                 "schema": {
@@ -3454,7 +3648,8 @@
                 },
                 "examples": {
                   "example": {
-                    "summary": "EOD snapshot for SPY with full curve payloads",
+                    "summary": "EOD snapshot for SPY with sampled curve rows",
+                    "description": "The curve arrays show sample rows from a larger snapshot. Their sums are not expected to equal the whole-snapshot netGex and netDex totals.",
                     "value": {
                       "ticker": "SPY",
                       "date": "2026-04-25",
@@ -3515,75 +3710,87 @@
                       "gexByStrike": [
                         {
                           "strike": 650,
-                          "gex": 4200000
+                          "callGex": 3000000,
+                          "putGex": 1000000,
+                          "netGex": 2000000
                         },
                         {
                           "strike": 655,
-                          "gex": 5800000
-                        },
-                        {
-                          "strike": 660,
-                          "gex": 5200000
+                          "callGex": 3700000,
+                          "putGex": 1500000,
+                          "netGex": 2200000
                         }
                       ],
                       "dexByStrike": [
                         {
                           "strike": 650,
-                          "dex": -2800000
+                          "callDex": 4000000,
+                          "putDex": 2500000,
+                          "netDex": -1500000
                         },
                         {
                           "strike": 655,
-                          "dex": -3100000
-                        },
-                        {
-                          "strike": 660,
-                          "dex": -2300000
+                          "callDex": 3300000,
+                          "putDex": 2000000,
+                          "netDex": -1300000
                         }
                       ],
                       "vannaByStrike": [
                         {
                           "strike": 655,
-                          "vanna": 32000
-                        },
-                        {
-                          "strike": 660,
-                          "vanna": 28000
+                          "callVanna": 20000,
+                          "putVanna": 12000,
+                          "netVanna": 32000
                         }
                       ],
                       "charmByStrike": [
                         {
                           "strike": 655,
-                          "charm": -8500
-                        },
-                        {
-                          "strike": 660,
-                          "charm": -10000
+                          "callCharm": 5000,
+                          "putCharm": 3500,
+                          "netCharm": -8500
                         }
                       ],
                       "vommaByStrike": [
                         {
                           "strike": 655,
-                          "vomma": 11500
-                        },
-                        {
-                          "strike": 660,
-                          "vomma": 15000
+                          "callVomma": 7000,
+                          "putVomma": 4500,
+                          "netVomma": 11500
                         }
                       ],
                       "volSkew": {
-                        "strikes": [
-                          600,
-                          625,
-                          650,
-                          675,
-                          700
+                        "2026-05-23": [
+                          {
+                            "strike": 600,
+                            "iv": 0.182
+                          },
+                          {
+                            "strike": 625,
+                            "iv": 0.158
+                          },
+                          {
+                            "strike": 650,
+                            "iv": 0.142
+                          },
+                          {
+                            "strike": 675,
+                            "iv": 0.139
+                          },
+                          {
+                            "strike": 700,
+                            "iv": 0.144
+                          }
                         ],
-                        "iv": [
-                          0.182,
-                          0.158,
-                          0.142,
-                          0.139,
-                          0.144
+                        "2026-06-19": [
+                          {
+                            "strike": 650,
+                            "iv": 0.148
+                          },
+                          {
+                            "strike": 675,
+                            "iv": 0.145
+                          }
                         ]
                       },
                       "probabilityData": {
@@ -3687,7 +3894,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining or broker connection failed",
+            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
             "content": {
               "application/json": {
                 "schema": {
@@ -3846,7 +4053,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining or broker connection failed",
+            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
             "content": {
               "application/json": {
                 "schema": {
@@ -3991,7 +4198,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining or broker connection failed",
+            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
             "content": {
               "application/json": {
                 "schema": {
@@ -4146,7 +4353,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining or broker connection failed",
+            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
             "content": {
               "application/json": {
                 "schema": {
@@ -4289,7 +4496,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining or broker connection failed",
+            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
             "content": {
               "application/json": {
                 "schema": {
@@ -4482,7 +4689,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining or broker connection failed",
+            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
             "content": {
               "application/json": {
                 "schema": {
@@ -4615,7 +4822,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining or broker connection failed",
+            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
             "content": {
               "application/json": {
                 "schema": {
@@ -4776,7 +4983,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining or broker connection failed",
+            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
             "content": {
               "application/json": {
                 "schema": {
@@ -4932,7 +5139,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining or broker connection failed",
+            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
             "content": {
               "application/json": {
                 "schema": {
@@ -5055,7 +5262,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining or broker connection failed",
+            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
             "content": {
               "application/json": {
                 "schema": {
@@ -5178,7 +5385,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining or broker connection failed",
+            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
             "content": {
               "application/json": {
                 "schema": {
@@ -5301,7 +5508,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining or broker connection failed",
+            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
             "content": {
               "application/json": {
                 "schema": {
@@ -5444,7 +5651,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining or broker connection failed",
+            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
             "content": {
               "application/json": {
                 "schema": {
@@ -5587,7 +5794,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining or broker connection failed",
+            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
             "content": {
               "application/json": {
                 "schema": {
@@ -5748,7 +5955,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining or broker connection failed",
+            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
             "content": {
               "application/json": {
                 "schema": {
@@ -5898,7 +6105,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining or broker connection failed",
+            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
             "content": {
               "application/json": {
                 "schema": {
@@ -6043,7 +6250,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining or broker connection failed",
+            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
             "content": {
               "application/json": {
                 "schema": {
@@ -6174,7 +6381,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining or broker connection failed",
+            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
             "content": {
               "application/json": {
                 "schema": {
@@ -6296,7 +6503,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining or broker connection failed",
+            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
             "content": {
               "application/json": {
                 "schema": {
@@ -6418,7 +6625,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining or broker connection failed",
+            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
             "content": {
               "application/json": {
                 "schema": {
@@ -6540,7 +6747,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining or broker connection failed",
+            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
             "content": {
               "application/json": {
                 "schema": {
@@ -6652,7 +6859,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining or broker connection failed",
+            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
             "content": {
               "application/json": {
                 "schema": {
@@ -6764,7 +6971,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining or broker connection failed",
+            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
             "content": {
               "application/json": {
                 "schema": {
@@ -6887,7 +7094,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining or broker connection failed",
+            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
             "content": {
               "application/json": {
                 "schema": {
@@ -7010,7 +7217,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining or broker connection failed",
+            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
             "content": {
               "application/json": {
                 "schema": {
@@ -7077,6 +7284,35 @@
                       "type": "object",
                       "description": "Only present when `?includeOptionsAnalytics=true`.",
                       "properties": {
+                        "priceHistory": {
+                          "type": "object",
+                          "description": "The daily close history the realized moves were computed from. `unconfirmed` is true when that history is not yet confirmed by a refresh: the symbol has a split due (`pending_split`), its price history is held for review (`held`), its state could not be read (`null`; the moves are still computed), it has no closes in the window (`null`; no moves are computed then), or any close in the window is unconfirmed. Index, future and crypto symbols (`not_applicable`) are never flagged when they have closes.",
+                          "properties": {
+                            "state": {
+                              "anyOf": [
+                                {
+                                  "type": "string",
+                                  "enum": [
+                                    "current",
+                                    "pending_split",
+                                    "held",
+                                    "not_applicable"
+                                  ]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "unconfirmed": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "state",
+                            "unconfirmed"
+                          ]
+                        },
                         "summary": {
                           "type": "object",
                           "properties": {
@@ -7383,7 +7619,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining or broker connection failed",
+            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
             "content": {
               "application/json": {
                 "schema": {
@@ -7506,7 +7742,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining or broker connection failed",
+            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
             "content": {
               "application/json": {
                 "schema": {
@@ -7629,7 +7865,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining or broker connection failed",
+            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
             "content": {
               "application/json": {
                 "schema": {
@@ -7752,7 +7988,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining or broker connection failed",
+            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
             "content": {
               "application/json": {
                 "schema": {
@@ -7887,7 +8123,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining or broker connection failed",
+            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
             "content": {
               "application/json": {
                 "schema": {
@@ -8040,7 +8276,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining or broker connection failed",
+            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
             "content": {
               "application/json": {
                 "schema": {
@@ -8174,7 +8410,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining or broker connection failed",
+            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
             "content": {
               "application/json": {
                 "schema": {
@@ -8298,7 +8534,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining or broker connection failed",
+            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
             "content": {
               "application/json": {
                 "schema": {
@@ -8431,7 +8667,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining or broker connection failed",
+            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
             "content": {
               "application/json": {
                 "schema": {
@@ -8546,7 +8782,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining or broker connection failed",
+            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
             "content": {
               "application/json": {
                 "schema": {
@@ -8661,7 +8897,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining or broker connection failed",
+            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
             "content": {
               "application/json": {
                 "schema": {
@@ -8677,7 +8913,7 @@
       "get": {
         "operationId": "streaming.websocket",
         "summary": "Real-time streaming WebSocket",
-        "description": "Upgrade to a WebSocket connection for real-time market data streaming. Supports three channels:\n\n- **quotes**: live bid/ask/price/volume for underlyings and options\n- **greeks**: live delta/gamma/theta/vega/rho/IV for options\n- **exposure**: computed GEX/DEX/VEX/Vanna/Charm/Vomma snapshots, pushed on significant price ticks\n\n**BYOK broker credentials** are sent via the initial `auth` message. Supported brokers: `tastytrade`, `tradier`, `schwab` (Public.com is not supported — no streaming API). Schwab streaming additionally requires the per-user app to be approved for **Accounts and Trading**; a market-data-only Schwab app receives an `auth_result` failure with an actionable message (its REST calibration still works).\n\n**Wire protocol:** JSON messages with discriminated `type` field. See the [Streaming Documentation](/docs/streaming) for the full protocol reference.\n\n**Inbound rate limit.** Frames you SEND are token-bucketed per session. Before the API key has been validated the allowance is a conservative floor (5/s, burst 10); before `welcome`, once the key is known, it is raised to your tier's `maxMessagesPerSecondPerWsSession`, carrying the current fill over rather than resetting. An over-rate frame is DROPPED, not queued, and does not reset the idle timer; you get an `error: INBOUND_RATE_LIMIT` notice at most once per second, and a session that keeps exceeding it is closed with 4429.\n\n**Rate shaping is announced.** When outbound data events exceed your per-session cap they are dropped, and the session now emits a `rate_shaped` control event (`droppedMessages`, `maxMessagesPerSecond`) at most once per second. Previously a shaped stream was indistinguishable from a quiet market. Control events are exempt from the cap, including this one.\n\n**Idle means no subscriptions, not no traffic.** A session holding at least one subscription is never closed for inactivity, however long it stays silent; consuming a stream is the point. A session holding nothing is closed after 30 minutes.\n\n**Channel scopes.** The `exposure` channel runs the same computation as `/v1/compute/exposure` and therefore requires the `compute` scope in addition to `streaming`. Enforcement is staged: it currently logs rather than refusing, and when enabled a subscribe that includes an unscoped channel is rejected in full with `error: CHANNEL_SCOPE_REQUIRED` (non-fatal: the session stays usable for the channels your key does cover). On each successful 60s re-authorization the live scope set is replaced; with enforcement enabled, an active channel whose scope was revoked is unsubscribed then. A database failure can delay that decision up to the separately documented 10-minute unverified ceiling.\n\n**Connection lifecycle:** the server's setup (API-key check, tier + `streaming` scope gates, concurrency-slot acquisition) is asynchronous, and broker authentication (Tradier/DXLink/Schwab handshake) is asynchronous again. Protocol order: `welcome` → `auth` → `auth_result` → `subscribe`. Early frames that arrive before `welcome` are buffered (up to 16) and drained once the session is wired, so sending `auth` in `onopen` works in practice — but the buffer protects only the transport race; protocol ordering still applies, so don't pre-queue `subscribe` before `auth_result`. Racing past the buffer cap returns `error: PRE_WELCOME_BUFFER_FULL`.\n\n**Quick example:**\n```\nwscat -c wss://data.optionsanalysissuite.com/v1/ws?apiKey=oas_live_...\n\n< {\"type\":\"welcome\",\"sessionId\":\"ws_...\",\"serverTime\":...,\"version\":\"1.0\"}\n> {\"type\":\"auth\",\"broker\":\"tastytrade\",\"credentials\":{\"tastytradeRefreshToken\":\"...\",\"tastytradeClientSecret\":\"...\"}}\n< {\"type\":\"connection\",\"status\":\"connecting\",\"broker\":\"tastytrade\"}\n< {\"type\":\"connection\",\"status\":\"connected\",\"broker\":\"tastytrade\"}\n< {\"type\":\"auth_result\",\"success\":true,\"broker\":\"tastytrade\"}\n> {\"type\":\"subscribe\",\"channels\":[\"quotes\",\"greeks\",\"exposure\"],\"symbols\":[\"SPY\"]}\n< {\"type\":\"subscribed\",\"channels\":[\"quotes\",\"greeks\",\"exposure\"],\"symbols\":[\"SPY\"]}\n< {\"type\":\"quote\",\"symbol\":\"SPY\",\"bid\":655.61,\"ask\":656.41,...}\n```\n\n**Session auth**: API key required via `apiKey` query param, `Authorization: Bearer`, or `X-API-Key`.\n",
+        "description": "Upgrade to a WebSocket connection for real-time market data streaming. Supports three channels:\n\n- **quotes**: live bid/ask/price/volume for underlyings and options\n- **greeks**: live delta/gamma/theta/vega/rho/IV for options\n- **exposure**: computed GEX/DEX/VEX/Vanna/Charm/Vomma snapshots, pushed on significant price ticks\n\n**BYOK broker credentials** are sent via the initial `auth` message. Supported brokers: `tastytrade`, `tradier`, `schwab`, `moomoo` (Public.com is not supported - no streaming API). moomoo authenticates with `credentials.moomooSealedToken` (the API token from the moomoo card on your Account page) and streams quotes and trades, not Greeks; a symbol moomoo refuses (no real-time permission on your account) is named in an `error` event's `symbols`. Schwab streaming additionally requires the per-user app to be approved for **Accounts and Trading**; a market-data-only Schwab app receives an `auth_result` failure with an actionable message (its REST calibration still works).\n\n**Wire protocol:** JSON messages with discriminated `type` field. See the [Streaming Documentation](/docs/streaming) for the full protocol reference.\n\n**Inbound rate limit.** Frames you SEND are token-bucketed per session. Before the API key has been validated the allowance is a conservative floor (5/s, burst 10); before `welcome`, once the key is known, it is raised to your tier's `maxMessagesPerSecondPerWsSession`, carrying the current fill over rather than resetting. An over-rate frame is DROPPED, not queued, and does not reset the idle timer; you get an `error: INBOUND_RATE_LIMIT` notice at most once per second, and a session that keeps exceeding it is closed with 4429.\n\n**Rate shaping is announced.** When outbound data events exceed your per-session cap they are dropped, and the session now emits a `rate_shaped` control event (`droppedMessages`, `maxMessagesPerSecond`) at most once per second. Previously a shaped stream was indistinguishable from a quiet market. Control events are exempt from the cap, including this one.\n\n**Idle means no subscriptions, not no traffic.** A session holding at least one subscription is never closed for inactivity, however long it stays silent; consuming a stream is the point. A session holding nothing is closed after 30 minutes.\n\n**Channel scopes.** The `exposure` channel runs the same computation as `/v1/compute/exposure` and therefore requires the `compute` scope in addition to `streaming`. Enforcement is staged: it currently logs rather than refusing, and when enabled a subscribe that includes an unscoped channel is rejected in full with `error: CHANNEL_SCOPE_REQUIRED` (non-fatal: the session stays usable for the channels your key does cover). On each successful 60s re-authorization the live scope set is replaced; with enforcement enabled, an active channel whose scope was revoked is unsubscribed then. A database failure can delay that decision up to the separately documented 10-minute unverified ceiling.\n\n**Connection lifecycle:** the server's setup (API-key check, tier + `streaming` scope gates, concurrency-slot acquisition) is asynchronous, and broker authentication (Tradier/DXLink/Schwab/moomoo handshake) is asynchronous again. Protocol order: `welcome` → `auth` → `auth_result` → `subscribe`. Early frames that arrive before `welcome` are buffered (up to 16) and drained once the session is wired, so sending `auth` in `onopen` works in practice — but the buffer protects only the transport race; protocol ordering still applies, so don't pre-queue `subscribe` before `auth_result`. Racing past the buffer cap returns `error: PRE_WELCOME_BUFFER_FULL`.\n\n**Quick example:**\n```\nwscat -c wss://data.optionsanalysissuite.com/v1/ws?apiKey=oas_live_...\n\n< {\"type\":\"welcome\",\"sessionId\":\"ws_...\",\"serverTime\":...,\"version\":\"1.0\"}\n> {\"type\":\"auth\",\"broker\":\"tastytrade\",\"credentials\":{\"tastytradeRefreshToken\":\"...\",\"tastytradeClientSecret\":\"...\"}}\n< {\"type\":\"connection\",\"status\":\"connecting\",\"broker\":\"tastytrade\"}\n< {\"type\":\"connection\",\"status\":\"connected\",\"broker\":\"tastytrade\"}\n< {\"type\":\"auth_result\",\"success\":true,\"broker\":\"tastytrade\"}\n> {\"type\":\"subscribe\",\"channels\":[\"quotes\",\"greeks\",\"exposure\"],\"symbols\":[\"SPY\"]}\n< {\"type\":\"subscribed\",\"channels\":[\"quotes\",\"greeks\",\"exposure\"],\"symbols\":[\"SPY\"]}\n< {\"type\":\"quote\",\"symbol\":\"SPY\",\"bid\":655.61,\"ask\":656.41,...}\n```\n\n**Session auth**: API key required via `apiKey` query param, `Authorization: Bearer`, or `X-API-Key`.\n",
         "tags": [
           "Streaming"
         ],
@@ -8760,7 +8996,7 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 20,
-            "pattern": "^[A-Za-z0-9./-]+$"
+            "pattern": "^[A-Za-z0-9./-]*[A-Za-z0-9][A-Za-z0-9./-]*$"
           },
           "expiry": {
             "type": "string",
@@ -8851,28 +9087,49 @@
             "type": "object",
             "properties": {
               "dividends": {
-                "description": "Discrete cash-dividend schedule for the binomial engine (model:\"binomial\"): a list of { time: years-to-ex-date (>0), amount: cash-per-share (>=0) }. Fixed cash amounts only (no proportional/escrowed mode). Continuous q is forced to 0 when a schedule is present, to avoid double-counting. Legacy aliases useDiscreteDividends / exDividendDates / dividendAmounts / dividendTimeUnit are also accepted; see the /v1/compute/price description.",
+                "description": "For model:\"multiasset\", per-leg continuous dividend yields as an array or CSV string; a null array entry requests ticker resolution for that leg. For model:\"binomial\", a discrete cash-dividend schedule: a list of { time: years-to-ex-date (>0), amount: cash-per-share (>=0) }. Fixed cash amounts only (no proportional/escrowed mode). Continuous q is forced to 0 when at least one scheduled payment falls within the life of the option, to avoid double-counting; an empty schedule, or one whose payments all fall after expiry, leaves the supplied q in place. Legacy aliases useDiscreteDividends / exDividendDates / dividendAmounts / dividendTimeUnit are also accepted; see the /v1/compute/price description.",
                 "anyOf": [
                   {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "time": {
-                          "type": [
-                            "number",
-                            "string"
-                          ]
-                        },
-                        "amount": {
-                          "type": [
-                            "number",
-                            "string"
-                          ]
+                    "anyOf": [
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "time": {
+                              "type": [
+                                "number",
+                                "string"
+                              ]
+                            },
+                            "amount": {
+                              "type": [
+                                "number",
+                                "string"
+                              ]
+                            }
+                          },
+                          "additionalProperties": {}
                         }
                       },
-                      "additionalProperties": {}
-                    }
+                      {
+                        "anyOf": [
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": [
+                                "number",
+                                "string",
+                                "null"
+                              ]
+                            }
+                          },
+                          {
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    ]
                   },
                   {
                     "type": "null"
@@ -8994,7 +9251,7 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 20,
-            "pattern": "^[A-Za-z0-9./-]+$"
+            "pattern": "^[A-Za-z0-9./-]*[A-Za-z0-9][A-Za-z0-9./-]*$"
           },
           "expiry": {
             "type": "string",
@@ -9085,28 +9342,49 @@
             "type": "object",
             "properties": {
               "dividends": {
-                "description": "Discrete cash-dividend schedule for the binomial engine (model:\"binomial\"): a list of { time: years-to-ex-date (>0), amount: cash-per-share (>=0) }. Fixed cash amounts only (no proportional/escrowed mode). Continuous q is forced to 0 when a schedule is present, to avoid double-counting. Legacy aliases useDiscreteDividends / exDividendDates / dividendAmounts / dividendTimeUnit are also accepted; see the /v1/compute/price description.",
+                "description": "For model:\"multiasset\", per-leg continuous dividend yields as an array or CSV string; a null array entry requests ticker resolution for that leg. For model:\"binomial\", a discrete cash-dividend schedule: a list of { time: years-to-ex-date (>0), amount: cash-per-share (>=0) }. Fixed cash amounts only (no proportional/escrowed mode). Continuous q is forced to 0 when at least one scheduled payment falls within the life of the option, to avoid double-counting; an empty schedule, or one whose payments all fall after expiry, leaves the supplied q in place. Legacy aliases useDiscreteDividends / exDividendDates / dividendAmounts / dividendTimeUnit are also accepted; see the /v1/compute/price description.",
                 "anyOf": [
                   {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "time": {
-                          "type": [
-                            "number",
-                            "string"
-                          ]
-                        },
-                        "amount": {
-                          "type": [
-                            "number",
-                            "string"
-                          ]
+                    "anyOf": [
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "time": {
+                              "type": [
+                                "number",
+                                "string"
+                              ]
+                            },
+                            "amount": {
+                              "type": [
+                                "number",
+                                "string"
+                              ]
+                            }
+                          },
+                          "additionalProperties": {}
                         }
                       },
-                      "additionalProperties": {}
-                    }
+                      {
+                        "anyOf": [
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": [
+                                "number",
+                                "string",
+                                "null"
+                              ]
+                            }
+                          },
+                          {
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    ]
                   },
                   {
                     "type": "null"
@@ -9234,7 +9512,7 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 20,
-            "pattern": "^[A-Za-z0-9./-]+$"
+            "pattern": "^[A-Za-z0-9./-]*[A-Za-z0-9][A-Za-z0-9./-]*$"
           },
           "expiry": {
             "type": "string",
@@ -9361,7 +9639,7 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 20,
-            "pattern": "^[A-Za-z0-9./-]+$"
+            "pattern": "^[A-Za-z0-9./-]*[A-Za-z0-9][A-Za-z0-9./-]*$"
           },
           "expiry": {
             "type": "string",
@@ -9475,7 +9753,7 @@
             "type": "object",
             "properties": {
               "dividends": {
-                "description": "Discrete cash-dividend schedule for the binomial engine (model:\"binomial\"): a list of { time: years-to-ex-date (>0), amount: cash-per-share (>=0) }. Fixed cash amounts only (no proportional/escrowed mode). Continuous q is forced to 0 when a schedule is present, to avoid double-counting. Legacy aliases useDiscreteDividends / exDividendDates / dividendAmounts / dividendTimeUnit are also accepted; see the /v1/compute/price description.",
+                "description": "Discrete cash-dividend schedule for the binomial engine (model:\"binomial\"): a list of { time: years-to-ex-date (>0), amount: cash-per-share (>=0) }. Fixed cash amounts only (no proportional/escrowed mode). Continuous q is forced to 0 when at least one scheduled payment falls within the life of the option, to avoid double-counting; an empty schedule, or one whose payments all fall after expiry, leaves the supplied q in place. Legacy aliases useDiscreteDividends / exDividendDates / dividendAmounts / dividendTimeUnit are also accepted; see the /v1/compute/price description.",
                 "anyOf": [
                   {
                     "type": "array",
@@ -9556,7 +9834,7 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 20,
-            "pattern": "^[A-Za-z0-9./-]+$"
+            "pattern": "^[A-Za-z0-9./-]*[A-Za-z0-9][A-Za-z0-9./-]*$"
           },
           "expiry": {
             "type": "string",
@@ -9690,7 +9968,7 @@
             "type": "object",
             "properties": {
               "dividends": {
-                "description": "Discrete cash-dividend schedule for the binomial engine (model:\"binomial\"): a list of { time: years-to-ex-date (>0), amount: cash-per-share (>=0) }. Fixed cash amounts only (no proportional/escrowed mode). Continuous q is forced to 0 when a schedule is present, to avoid double-counting. Legacy aliases useDiscreteDividends / exDividendDates / dividendAmounts / dividendTimeUnit are also accepted; see the /v1/compute/price description.",
+                "description": "Discrete cash-dividend schedule for the binomial engine (model:\"binomial\"): a list of { time: years-to-ex-date (>0), amount: cash-per-share (>=0) }. Fixed cash amounts only (no proportional/escrowed mode). Continuous q is forced to 0 when at least one scheduled payment falls within the life of the option, to avoid double-counting; an empty schedule, or one whose payments all fall after expiry, leaves the supplied q in place. Legacy aliases useDiscreteDividends / exDividendDates / dividendAmounts / dividendTimeUnit are also accepted; see the /v1/compute/price description.",
                 "anyOf": [
                   {
                     "type": "array",
@@ -9798,7 +10076,7 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 20,
-            "pattern": "^[A-Za-z0-9./-]+$"
+            "pattern": "^[A-Za-z0-9./-]*[A-Za-z0-9][A-Za-z0-9./-]*$"
           },
           "expiry": {
             "type": "string",
@@ -9951,7 +10229,7 @@
                   "type": "object",
                   "properties": {
                     "dividends": {
-                      "description": "Discrete cash-dividend schedule for the binomial engine (model:\"binomial\"): a list of { time: years-to-ex-date (>0), amount: cash-per-share (>=0) }. Fixed cash amounts only (no proportional/escrowed mode). Continuous q is forced to 0 when a schedule is present, to avoid double-counting. Legacy aliases useDiscreteDividends / exDividendDates / dividendAmounts / dividendTimeUnit are also accepted; see the /v1/compute/price description.",
+                      "description": "Discrete cash-dividend schedule for the binomial engine (model:\"binomial\"): a list of { time: years-to-ex-date (>0), amount: cash-per-share (>=0) }. Fixed cash amounts only (no proportional/escrowed mode). Continuous q is forced to 0 when at least one scheduled payment falls within the life of the option, to avoid double-counting; an empty schedule, or one whose payments all fall after expiry, leaves the supplied q in place. Legacy aliases useDiscreteDividends / exDividendDates / dividendAmounts / dividendTimeUnit are also accepted; see the /v1/compute/price description.",
                       "anyOf": [
                         {
                           "type": "array",
@@ -10076,7 +10354,7 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 20,
-            "pattern": "^[A-Za-z0-9./-]+$"
+            "pattern": "^[A-Za-z0-9./-]*[A-Za-z0-9][A-Za-z0-9./-]*$"
           },
           "expiry": {
             "type": "string",
@@ -10235,7 +10513,7 @@
                 "type": "string",
                 "minLength": 1,
                 "maxLength": 20,
-                "pattern": "^[A-Za-z0-9./-]+$"
+                "pattern": "^[A-Za-z0-9./-]*[A-Za-z0-9][A-Za-z0-9./-]*$"
               },
               "expiry": {
                 "type": "string",
@@ -10339,7 +10617,7 @@
                 "type": "string",
                 "minLength": 1,
                 "maxLength": 20,
-                "pattern": "^[A-Za-z0-9./-]+$"
+                "pattern": "^[A-Za-z0-9./-]*[A-Za-z0-9][A-Za-z0-9./-]*$"
               },
               "expiration": {
                 "type": "string"
@@ -10459,6 +10737,9 @@
           },
           "symbol": {
             "type": "string",
+            "minLength": 1,
+            "maxLength": 20,
+            "pattern": "^[A-Za-z0-9./-]*[A-Za-z0-9][A-Za-z0-9./-]*$",
             "description": "Ticker symbol (e.g. \"SPY\")"
           },
           "expiration": {
@@ -11230,7 +11511,7 @@
       },
       "SensitivityResponse": {
         "type": "object",
-        "description": "Per-axis sweep of Greeks. Each point carries the full 17-Greek set under Black-Scholes (model defaults to \"bs\"). When `model: \"heston\"`, points additionally carry a `modelGreeks` block with derivatives w.r.t. the Heston parameters (V0, kappa, theta, volOfVol, rho). When `model: \"binomial\"`, each point carries `price`, `delta`, and `gamma` only.",
+        "description": "Per-axis sweep of Greeks. Each point carries the full 17-Greek set under Black-Scholes (model defaults to \"bs\"). When `model: \"heston\"`, points additionally carry a `modelGreeks` block with derivatives w.r.t. the Heston parameters (V0, kappa, theta, volOfVol, rho); a point whose Heston price or model derivatives cannot be computed rejects the sweep (422 `NON_FINITE_RESULT`), and a sweep that has spent more than 8 million Fourier integrand evaluations by the end of a point is rejected (422 `COMPUTE_BUDGET_EXCEEDED`). When `model: \"binomial\"`, each point carries `price`, `delta`, and `gamma` only.",
         "required": [
           "axis",
           "model",
@@ -12376,7 +12657,7 @@
                 "type": "null"
               }
             ],
-            "description": "GEX-by-strike series; opaque payload"
+            "description": "Per-strike rows of { strike, callGex, putGex, netGex }. The legs are ABSOLUTE values and netGex is the signed sum of the underlying signed legs, so it is NOT recoverable from the two shown without knowing their signs. Dealer call gamma is positive and put gamma negative, which makes netGex = callGex - putGex. Source of truth: packages/shared/src/exposure-compute.ts."
           },
           "dexByStrike": {
             "anyOf": [
@@ -12391,7 +12672,7 @@
                 "type": "null"
               }
             ],
-            "description": "DEX-by-strike series; opaque payload"
+            "description": "Per-strike rows of { strike, callDex, putDex, netDex }. The legs are ABSOLUTE values and netDex is the signed sum of the underlying signed legs. Delta exposure signs run OPPOSITE to gamma: the call leg is negative and the put leg positive, so netDex = putDex - callDex and a negative netDex means the call leg is the larger one. Source of truth: packages/shared/src/exposure-compute.ts."
           },
           "vannaByStrike": {
             "anyOf": [
@@ -12406,7 +12687,7 @@
                 "type": "null"
               }
             ],
-            "description": "Vanna-by-strike series; opaque payload"
+            "description": "Per-strike rows of { strike, callVanna, putVanna, netVanna }. The legs are ABSOLUTE values and netVanna is the signed sum of the underlying signed legs, which here share a sign, so the magnitude of netVanna is callVanna + putVanna. Source of truth: packages/shared/src/exposure-compute.ts."
           },
           "charmByStrike": {
             "anyOf": [
@@ -12421,7 +12702,7 @@
                 "type": "null"
               }
             ],
-            "description": "Charm-by-strike series; opaque payload"
+            "description": "Per-strike rows of { strike, callCharm, putCharm, netCharm }. The legs are ABSOLUTE values and netCharm is the signed sum of the underlying signed legs. Unlike vanna and vomma, the call and put charm legs are computed from DIFFERENT expressions and do not necessarily share a sign, so netCharm is not recoverable from the two shown. Source of truth: packages/shared/src/exposure-compute.ts."
           },
           "vommaByStrike": {
             "anyOf": [
@@ -12436,7 +12717,7 @@
                 "type": "null"
               }
             ],
-            "description": "Vomma-by-strike series; opaque payload"
+            "description": "Per-strike rows of { strike, callVomma, putVomma, netVomma }. The legs are ABSOLUTE values and netVomma is the signed sum of the underlying signed legs, which here share a sign, so the magnitude of netVomma is callVomma + putVomma. Source of truth: packages/shared/src/exposure-compute.ts."
           },
           "volSkew": {
             "anyOf": [
@@ -12448,7 +12729,7 @@
                 "type": "null"
               }
             ],
-            "description": "Vol-skew curve; opaque payload"
+            "description": "Vol-skew curve KEYED BY EXPIRATION: { \"YYYY-MM-DD\": [{ strike, iv }] }, each list sorted by strike. It is not a pair of parallel strike/iv arrays. Source of truth: proxy/services/SnapshotComputeService.ts:1023."
           },
           "probabilityData": {
             "anyOf": [
@@ -13523,6 +13804,16 @@
               "sigma"
             ]
           },
+          "unreadFields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The missing fields whose stored data could not be READ (an outage, not absence), present on 503 UPSTREAM_UNAVAILABLE responses: a retry may resolve them",
+            "example": [
+              "r"
+            ]
+          },
           "warnings": {
             "type": "array",
             "items": {
@@ -13611,10 +13902,100 @@
           "code": {
             "type": "string",
             "example": "WORKER_POOL_UNAVAILABLE"
+          },
+          "retryable": {
+            "type": "boolean",
+            "description": "Present on UPSTREAM_UNAVAILABLE: true, a retry may succeed"
+          },
+          "missingFields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "UPSTREAM_UNAVAILABLE: every market input the request still needs (the unread ones and any with nothing on file)"
+          },
+          "unreadFields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "UPSTREAM_UNAVAILABLE: the missing inputs whose stored data could not be read (an outage, not absence)",
+            "example": [
+              "r"
+            ]
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Resolver warnings, on UPSTREAM_UNAVAILABLE"
           }
         },
         "required": [
           "error"
+        ]
+      },
+      "BrokerError": {
+        "type": "object",
+        "description": "A failure of the broker read made with your broker credentials (data-api lib/brokerReads.ts), answered as the live broker routes answer it and never with the broker's own status. No broker text is returned. A broker that explicitly refuses a market for want of a data entitlement on your account (a moomoo permission refusal) answers 403 BROKER_ENTITLEMENT_MISSING, not retryable. moomoo may instead serve delayed option quotes, unmarked, to an account without real-time option permission, so the absence of this error does not mean the data is real-time.",
+        "properties": {
+          "error": {
+            "type": "string",
+            "example": "tradier rejected the chain request (HTTP 404)"
+          },
+          "code": {
+            "type": "string",
+            "enum": [
+              "BROKER_CREDENTIAL_INVALID",
+              "BROKER_RATE_LIMITED",
+              "BROKER_REJECTED",
+              "BROKER_UNAVAILABLE",
+              "BROKER_ENTITLEMENT_MISSING"
+            ]
+          },
+          "retryable": {
+            "type": "boolean",
+            "description": "Whether the same request can succeed later. False for a refused credential or a refused request."
+          },
+          "provider": {
+            "type": "string",
+            "example": "tradier"
+          },
+          "message": {
+            "type": "string",
+            "description": "What to do next (BROKER_CREDENTIAL_INVALID, BROKER_RATE_LIMITED, BROKER_ENTITLEMENT_MISSING)."
+          },
+          "retryAfterSeconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "BROKER_RATE_LIMITED: the wait the broker named, null when it named none."
+          },
+          "brokerFailure": {
+            "type": "string",
+            "enum": [
+              "http-status",
+              "timeout",
+              "unreadable-response",
+              "other"
+            ],
+            "description": "BROKER_REJECTED and BROKER_UNAVAILABLE: what kind of failure it was."
+          },
+          "brokerStatus": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "BROKER_REJECTED and BROKER_UNAVAILABLE: the broker's HTTP status, null when it gave none."
+          }
+        },
+        "required": [
+          "error",
+          "code",
+          "retryable",
+          "provider"
         ]
       }
     },

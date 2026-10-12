@@ -60,12 +60,17 @@ class ValidationError(OASError):
 class PermissionDeniedError(OASError):
     """403 — API key authenticated but lacks the required tier or scope.
 
-    The server emits this for two distinct reasons, surfaced via :attr:`code`:
+    The server emits this for three distinct reasons, surfaced via :attr:`code`:
 
     - ``API_TIER_REQUIRED`` — your tier is missing (free tier hitting a paid endpoint).
     - ``INSUFFICIENT_SCOPE`` — your key authenticated but doesn't carry the
       ``compute`` / ``data`` scope that this endpoint needs. :attr:`required_scope`
       holds the missing scope when present.
+    - ``BROKER_ENTITLEMENT_MISSING`` - your broker explicitly refused the market
+      for want of a data entitlement on your account (a moomoo permission
+      refusal). Not retryable. moomoo can also serve delayed option quotes
+      without refusing, so the absence of this error does not mean the data is
+      real-time.
     """
 
     def __init__(

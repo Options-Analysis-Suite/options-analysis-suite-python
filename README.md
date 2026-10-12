@@ -20,7 +20,7 @@ pip install options-analysis-suite
 ## Quickstart
 
 ```python
-from oas import OASClient, SchwabCredentials, TastytradeCredentials, TradierCredentials
+from oas import MoomooCredentials, OASClient, SchwabCredentials, TastytradeCredentials, TradierCredentials
 
 with OASClient(api_key="oas_live_...") as client:
     # Data: cached EOD analytics
@@ -43,6 +43,7 @@ with OASClient(api_key="oas_live_...") as client:
         broker=TradierCredentials(token="..."),
         # Or TastytradeCredentials(refresh_token=..., client_secret=...)
         # or SchwabCredentials(refresh_token=..., client_id=..., client_secret=...)
+        # or MoomooCredentials(sealed_token=...)  # the API token from the moomoo card
     )
     cal.save("spy_heston.json")
 

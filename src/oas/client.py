@@ -609,8 +609,10 @@ class OASClient:
         Args:
             symbol: Underlying ticker (e.g. ``"SPY"``).
             model: One of ``"heston"``, ``"sabr"``, ``"vg"``, ``"jd"``, ``"localvol"``.
-            broker: BYOK credentials. The platform never persists broker tokens —
-                they live only on the inbound request.
+            broker: BYOK credentials. By default the platform does not persist
+                broker tokens; they live only on the inbound request. API-tier
+                accounts may opt in to encrypted server-side storage from the
+                account page.
             expiration: Optional ``YYYY-MM-DD`` expiration. Omit to let the
                 server pick the nearest monthly.
             model_params: Optional model-specific calibration knobs (e.g.

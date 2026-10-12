@@ -13,6 +13,43 @@ out in this file with **Breaking** at the start of the bullet.
 
 ## [Unreleased]
 
+## [1.2.0] (2026-10-12)
+
+### Added
+
+- `MoomooCredentials(sealed_token=...)` BYOK helper for moomoo, alongside
+  `TradierCredentials`, `TastytradeCredentials` and `SchwabCredentials`. The
+  token is the API token from the moomoo card on the Account page (moomoo's
+  read-only sign-in, sealed to the account), so it works only with API keys on
+  the account that connected moomoo. Works with the calibration and full-mode
+  probability endpoints.
+- Regenerated models for the current API contract:
+  - `BrokerError`, the body every broker-reading endpoint answers a broker
+    failure with: `code` (`BROKER_CREDENTIAL_INVALID`, `BROKER_RATE_LIMITED`,
+    `BROKER_REJECTED`, `BROKER_UNAVAILABLE` or `BROKER_ENTITLEMENT_MISSING`),
+    `retryable`, `provider`, `retryAfterSeconds`, `brokerFailure` and
+    `brokerStatus`. `BROKER_ENTITLEMENT_MISSING` (403, raised as
+    `PermissionDeniedError`) is what moomoo answers when it explicitly refuses
+    a market. On an account without real-time option permission moomoo may
+    instead serve delayed option quotes, unmarked.
+  - `ServiceUnavailableError` carries `retryable`, `missingFields`,
+    `unreadFields` and `warnings`; `SemanticValidationError` carries
+    `unreadFields`.
+  - `dividends` on the pricing requests also takes the multi-asset model's
+    per-leg continuous yields, as an array (a null entry asks for that leg's
+    yield to be resolved from its ticker) or a CSV string.
+
+### Changed
+
+- `symbol` fields carry the constraint the API enforces: at least one letter
+  or digit among `A-Z a-z 0-9 . / -`, at most 20 characters. The calibration
+  request's `symbol`, a bare string before, is constrained the same way.
+  Values the API already refused now fail in the model instead.
+- The `OASClient` docstring says how broker credentials are held: by default
+  only on the inbound request; API-tier accounts may opt in to encrypted
+  server-side storage from the Account page.
+- Model descriptions refreshed from the current contract.
+
 ## [1.1.1] (2026-09-07)
 
 ### Fixed
