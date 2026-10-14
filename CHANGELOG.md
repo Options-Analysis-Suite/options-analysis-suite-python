@@ -22,11 +22,12 @@ out in this file with **Breaking** at the start of the bullet.
   volatility, in place of a central difference of 0.001 in volatility. It
   applies to `greeks(...)` with `model="bs"` (the default), `model="pde"`
   where it returns the analytical Greeks, and the Black-Scholes Greeks of the
-  points of `sensitivity(...)` and the legs of `strategy(...)`. The change is
-  at most 0.07% of the largest value at the same volatility and tenor (at 5%
-  volatility; less above); relative to the value itself it is larger only
-  where the value is small. Its sign and units, the SDK's methods and its
-  models are unchanged.
+  points of `sensitivity(...)` and the legs of `strategy(...)`. On a sampled
+  grid (a 4% rate, a 2% dividend yield, spots from 50 to 150 against a strike
+  of 100, tenors from a day to two years) the largest change was 0.07% of the
+  largest value at the same volatility and tenor (at 5% volatility; less
+  above); relative to the value itself it was larger only where the value is
+  small. Its sign and units, the SDK's methods and its models are unchanged.
 - Contract snapshot refreshed: the `greeks` operation description carries the
   dated note.
 
