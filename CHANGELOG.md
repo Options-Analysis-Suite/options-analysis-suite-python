@@ -13,6 +13,23 @@ out in this file with **Breaking** at the start of the bullet.
 
 ## [Unreleased]
 
+## [1.3.1] (2026-10-13)
+
+### Changed
+
+- **API value change:** `dcharmDvol` from the Black-Scholes formula is exact
+  (API change of 2026-10-13): the closed-form charm differentiated in
+  volatility, in place of a central difference of 0.001 in volatility. It
+  applies to `greeks(...)` with `model="bs"` (the default), `model="pde"`
+  where it returns the analytical Greeks, and the Black-Scholes Greeks of the
+  points of `sensitivity(...)` and the legs of `strategy(...)`. The change is
+  at most 0.07% of the largest value at the same volatility and tenor (at 5%
+  volatility; less above); relative to the value itself it is larger only
+  where the value is small. Its sign and units, the SDK's methods and its
+  models are unchanged.
+- Contract snapshot refreshed: the `greeks` operation description carries the
+  dated note.
+
 ## [1.3.0] (2026-10-13)
 
 ### Changed
