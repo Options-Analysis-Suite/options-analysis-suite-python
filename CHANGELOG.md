@@ -13,6 +13,33 @@ out in this file with **Breaking** at the start of the bullet.
 
 ## [Unreleased]
 
+## [1.3.0] (2026-10-13)
+
+### Changed
+
+- **API behavior change:** the API publishes every time Greek as what one
+  day of time passing does (API change of 2026-10-13). `charm`, `color`,
+  `veta` and `dcharmDvol` changed sign: before it they were taken against
+  the time remaining to expiry. `theta` and every unit are unchanged. It applies to `greeks(...)`,
+  the points of `sensitivity(...)`, the legs and `netGreeks` of
+  `strategy(...)`, and the `greeks` of `price(...)`. Each of those responses
+  now carries `greekTimeConvention: "time-passing"`; a value saved from a
+  response without it is on the old sign, so negate those four before
+  comparing it with a current one. The SDK's methods are unchanged and the
+  new field is optional, so code written for 1.2.0 runs unchanged; only the
+  sign of those four values moved.
+- Regenerated models for the current API contract: the `GreekTimeConvention`
+  enum and an optional `greekTimeConvention` field on `GreeksResponse`,
+  `SensitivityResponse`, `StrategyResponse` and `PriceResponse`; the time
+  Greeks' descriptions state the time-passing sign and their units
+  (`dcharmDvol` per day per unit of volatility, not per 1%). The Greeks
+  response examples for the barrier, Asian and multi-asset insight requests
+  are the server's own answers to those requests. The exposure models' charm
+  fields state their sign, which did not change: dealer dollar charm per
+  calendar day on the remaining-maturity sign for the dealer.
+- Operation descriptions refreshed from the current contract (the compute
+  allowance, cap and lane wording).
+
 ## [1.2.0] (2026-10-12)
 
 ### Added

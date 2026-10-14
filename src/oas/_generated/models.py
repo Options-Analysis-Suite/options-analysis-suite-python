@@ -1236,6 +1236,10 @@ class ResolvedSummary(RootModel[dict[str, ResolvedSummary1]]):
     root: dict[str, ResolvedSummary1]
 
 
+class GreekTimeConvention(Enum):
+    time_passing = 'time-passing'
+
+
 class McStats(BaseModel):
     model_config = ConfigDict(
         extra='ignore',
@@ -1327,7 +1331,10 @@ class GreeksResponse(BaseModel):
     price: float
     delta: float | None = Field(None, description='dP/dS')
     vega: float | None = Field(None, description='dP/dσ (per 1% vol change)')
-    theta: float | None = Field(None, description='dP/dt (per day - see `dayCount`)')
+    theta: float | None = Field(
+        None,
+        description='Price change from one day of time passing: dP/dt with t the valuation date (minus dP/dT with T the time to expiry), per day - see `dayCount`. Negative for a long option losing time value.',
+    )
     rho: float | None = Field(None, description='dP/dr (per 1% rate change)')
     epsilon: float | None = Field(
         None, description='dP/dq (per 1% dividend yield change)'
@@ -1335,24 +1342,26 @@ class GreeksResponse(BaseModel):
     gamma: float | None = Field(None, description='d²P/dS²')
     vanna: float | None = Field(None, description='d²P/dSdσ')
     charm: float | None = Field(
-        None, description='d²P/dSdt (delta decay, PER DAY - see `dayCount`)'
+        None,
+        description='Delta change from one day of time passing: d²P/dSdt (minus d²P/dSdT), PER DAY - see `dayCount`. Published on the opposite sign before 2026-10-13 - see `greekTimeConvention`.',
     )
     vomma: float | None = Field(None, description='d²P/dσ² (vega convexity)')
     veta: float | None = Field(
         None,
-        description='d²P/dσdt (vega decay, per 1% vol change PER DAY - see `dayCount`)',
+        description='Vega change (vega per 1% vol) from one day of time passing: d²P/dσdt (minus d²P/dσdT), per 1% vol change PER DAY - see `dayCount`. Published on the opposite sign before 2026-10-13 - see `greekTimeConvention`.',
     )
     speed: float | None = Field(None, description='d³P/dS³ (gamma sensitivity to spot)')
     zomma: float | None = Field(
         None, description='d³P/dS²dσ (gamma sensitivity to vol)'
     )
     color: float | None = Field(
-        None, description='d³P/dS²dt (gamma decay, PER DAY - see `dayCount`)'
+        None,
+        description='Gamma change from one day of time passing: d³P/dS²dt (minus d³P/dS²dT), PER DAY - see `dayCount`. Published on the opposite sign before 2026-10-13 - see `greekTimeConvention`.',
     )
     ultima: float | None = Field(None, description='d³P/dσ³ (vomma sensitivity to vol)')
     dcharmDvol: float | None = Field(
         None,
-        description='d³P/dSdtdσ (charm sensitivity to vol, PER DAY - see `dayCount`)',
+        description='Change in `charm` (the delta change from one day of time passing) per unit of volatility: d³P/dSdσdt (minus d³P/dSdσdT), PER DAY - see `dayCount`. Per unit of volatility (sigma moving by 1.00), not per 1%: one vol point moves `charm` by a hundredth of it. Published on the opposite sign before 2026-10-13 - see `greekTimeConvention`.',
     )
     lambda_: float | None = Field(
         None, alias='lambda', description='Leverage: delta × S / P (also called Omega)'
@@ -1360,6 +1369,10 @@ class GreeksResponse(BaseModel):
     phi: float | None = Field(
         None,
         description='Carry-rate sensitivity. For Black-Scholes this equals rho - epsilon; exotic/numerical models may compute it independently.',
+    )
+    greekTimeConvention: GreekTimeConvention | None = Field(
+        None,
+        description='The sign of the five per-day time Greeks: `time-passing` means `theta`, `charm`, `color` and `veta` are what one day of time passing does to the price, delta, gamma and vega, and `dcharmDvol` is that daily `charm` differentiated by volatility, which is what one day of time passing does to `vanna`; each per `dayCount` day. Sent on every response since 2026-10-13. A response without it predates that change and carries `charm`, `color`, `veta` and `dcharmDvol` on the opposite sign (their derivative against the time remaining to expiry); negate those four to compare it. Its `theta` was already time-passing.',
     )
     exoticInsight: ExoticInsight | None = None
     inputs: ResolvedInputs
@@ -1410,7 +1423,10 @@ class ExposureSnapshot(BaseModel):
     netDelta: float
     netVega: float
     netVanna: float
-    netCharm: float
+    netCharm: float = Field(
+        ...,
+        description='Net dealer dollar charm per calendar day on the remaining-maturity sign for the dealer, the opposite of the time-passing `charm` of `/v1/compute/greeks`: one day of time passing moves the dollar delta of the dealers by minus `netCharm`.',
+    )
     netVomma: float
     callWall: float | None
     putWall: float | None
@@ -1533,7 +1549,7 @@ class StrategyLeg(BaseModel):
     )
     greeks: dict[str, float] = Field(
         ...,
-        description='Per-contract Greeks for option legs; `{ delta: 1 }` for stock.',
+        description='Per-contract Greeks for option legs, in the `/v1/compute/greeks` convention with the per-day Greeks per calendar day (365): `theta`, `charm`, `color`, `veta` and `dcharmDvol` are what one day of time passing does (see `greekTimeConvention`). `{ delta: 1 }` for stock.',
     )
 
 
@@ -1603,6 +1619,10 @@ class StrategyResponse(BaseModel):
         description='Lognormal probability of finishing in a profit zone; null unless sigma and tenor are known.',
     )
     payoffCurve: list[StrategyPayoffPoint]
+    greekTimeConvention: GreekTimeConvention | None = Field(
+        None,
+        description='The sign of the time Greeks in each leg and in `netGreeks`: what one day of time passing does, per calendar day, as on `/v1/compute/greeks` (see its `greekTimeConvention`). A response without it predates 2026-10-13 and carries `charm`, `color`, `veta` and `dcharmDvol` on the opposite sign.',
+    )
     resolved: ResolvedSummary | None = None
 
 
@@ -1824,7 +1844,7 @@ class SnapshotResponse(BaseModel):
     )
     charmByStrike: list[dict[str, Any]] | None = Field(
         None,
-        description='Per-strike rows of { strike, callCharm, putCharm, netCharm }. The legs are ABSOLUTE values and netCharm is the signed sum of the underlying signed legs. Unlike vanna and vomma, the call and put charm legs are computed from DIFFERENT expressions and do not necessarily share a sign, so netCharm is not recoverable from the two shown. Source of truth: packages/shared/src/exposure-compute.ts.',
+        description='Per-strike rows of { strike, callCharm, putCharm, netCharm }. The legs are ABSOLUTE values and netCharm is the signed sum of the underlying signed legs, dealer dollar charm per calendar day on the remaining-maturity sign for the dealer, the opposite of the time-passing `charm` of `/v1/compute/greeks`: one day of time passing moves the dollar delta of the dealers by minus `netCharm`. Unlike vanna and vomma, the call and put charm legs are computed from DIFFERENT expressions and do not necessarily share a sign, so netCharm is not recoverable from the two shown. Source of truth: packages/shared/src/exposure-compute.ts.',
     )
     vommaByStrike: list[dict[str, Any]] | None = Field(
         None,
@@ -2260,7 +2280,11 @@ class PriceResponse(BaseModel):
     inputs: ResolvedInputs
     greeks: dict[str, float] | None = Field(
         None,
-        description='Per-Greek values produced as a side effect of pricing for some models. Binomial returns delta/gamma. The default numerical PDE path returns delta/gamma/theta; an enhanced-control PDE request may return only price. Vega and rho are absent from numerical PDE pricing because that solve does not measure them. An analytical PDE fallback can return vega/rho and is identified in `warnings`. Use /v1/compute/greeks for the full 17-Greek response across all models.',
+        description='Per-Greek values produced as a side effect of pricing for some models, in the `/v1/compute/greeks` convention (a `theta` here is what one day of time passing does, per `dayCount` day). Binomial returns delta/gamma. The default numerical PDE path returns delta/gamma/theta; an enhanced-control PDE request may return only price. Vega and rho are absent from numerical PDE pricing because that solve does not measure them. An analytical PDE fallback can return vega/rho and is identified in `warnings`. Use /v1/compute/greeks for the full 17-Greek response across all models.',
+    )
+    greekTimeConvention: GreekTimeConvention | None = Field(
+        None,
+        description='Present with `greeks`: the time Greeks among them are what one day of time passing does, as on `/v1/compute/greeks` (see its `greekTimeConvention`).',
     )
     mcStats: McStats | None = None
     distribution: McDistribution | None = None
@@ -2288,20 +2312,35 @@ class SensitivityPoint(BaseModel):
     delta: float | None = None
     gamma: float | None = None
     vega: float | None = None
-    theta: float | None = None
+    theta: float | None = Field(
+        None,
+        description='Price change from one day of time passing, per `dayCount` day (as `GreeksResponse.theta`).',
+    )
     rho: float | None = None
     epsilon: float | None = None
     vanna: float | None = None
-    charm: float | None = None
+    charm: float | None = Field(
+        None,
+        description='Delta change from one day of time passing, per `dayCount` day (as `GreeksResponse.charm`).',
+    )
     vomma: float | None = None
-    veta: float | None = None
+    veta: float | None = Field(
+        None,
+        description='Vega (per 1% vol) change from one day of time passing, per `dayCount` day (as `GreeksResponse.veta`).',
+    )
     speed: float | None = None
     zomma: float | None = None
-    color: float | None = None
+    color: float | None = Field(
+        None,
+        description='Gamma change from one day of time passing, per `dayCount` day (as `GreeksResponse.color`).',
+    )
     ultima: float | None = None
     lambda_: float | None = Field(None, alias='lambda')
     phi: float | None = None
-    dcharmDvol: float | None = None
+    dcharmDvol: float | None = Field(
+        None,
+        description='Change in `charm` per unit of volatility, per `dayCount` day (as `GreeksResponse.dcharmDvol`).',
+    )
     modelGreeks: HestonModelGreeks | None = None
 
 
@@ -2356,6 +2395,10 @@ class SensitivityResponse(BaseModel):
     axis: Axis
     model: Model11 = Field(..., description='Model used for the sweep.')
     data: list[SensitivityPoint]
+    greekTimeConvention: GreekTimeConvention | None = Field(
+        None,
+        description='The sign of the time Greeks on every point: what one day of time passing does, per `dayCount` day, as on `/v1/compute/greeks` (see its `greekTimeConvention`). A sweep without it predates 2026-10-13 and carries `charm`, `color`, `veta` and `dcharmDvol` on the opposite sign.',
+    )
     resolved: ResolvedSummary | None = None
 
 
