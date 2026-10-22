@@ -13,6 +13,178 @@ out in this file with **Breaking** at the start of the bullet.
 
 ## [Unreleased]
 
+## [1.4.0] (2026-10-22)
+
+The API's model corrections live by 2026-10-22 move many prices and Greeks.
+They turn several answers the API could not stand behind into coded refusals,
+and they let requests answer that used to fail. The SDK's methods are
+unchanged, and every new field is optional, so existing SDK call signatures
+remain compatible. The API changes below can change values and
+require callers to handle new refusals. Saved local-vol calibrations containing
+only the former global coefficients should be recalibrated, as explained below.
+
+### Added
+
+- `Calibration.warnings` holds the calibration's non-fatal notices, for
+  example a large eSSVI node residual or a sparse maturity whose smile shape
+  is borrowed. `calibrate(...)` fills it, `save()` writes it and
+  `from_json()` reads it back. A file saved by an earlier version loads with
+  `warnings=None`.
+- Regenerated models for the current API contract:
+  - `StrategyLeg.retainedGreeks` (`RetainedGreeks`, with the `Vomma`,
+    `Ultima`, `Speed` and `DcharmDvol` enums). On a binomial leg it names the
+    Greeks that kept a native or earlier estimate because an optional accuracy
+    fit could not finish within the request. It is omitted when none did.
+  - `StrategyResponse.warnings` holds at most one notice, issued when any
+    leg's accuracy fit could not finish. Fewer steps or fewer legs leave more
+    allowance for the fits.
+  - `CalibrateResponse.warnings`, `RiskNeutral.warnings` (the implied
+    distribution) and `ExoticInsight.warnings`.
+  - Descriptions refreshed from the current contract: the local-vol
+    calibration `params`, Heston's `fitError.ivRmse`, the implied
+    distribution's `method`, and the operation descriptions.
+
+### Changed
+
+- **API behavior change: local-vol calibration.** `calibrate(model="localvol")`
+  now returns replayable `params`:
+  - the fitted surface's observations as `impliedVolData` (a JSON string),
+    `interpolation: "essvi"` and `ticker`;
+  - these replace the eight global coefficients `alpha0` to `gamma`;
+  - `Calibration.price()` and `.greeks()` send them back as `modelParams`, and
+    the API refits those observations deterministically.
+
+  If a saved local-vol calibration contains only the former eight global
+  coefficients, recalibrate it to obtain replayable surface observations.
+  The pricing routes ignore those coefficients and did so when 1.3.1
+  shipped; with the default pricing controls, such a file prices at a
+  constant local volatility equal to `sigma`.
+- **API behavior change: new refusals.** These requests now return 422 with a
+  code, where they used to return a number the API could not stand behind:
+  - `INVALID_BINOMIAL_PROBABILITY`: a CRR or JR tree (`model="binomial"`)
+    whose up-move probability falls outside [0, 1]. Such trees used to be
+    clamped silently. This applies to strategy, scenario and sensitivity legs
+    too.
+  - `MC_PRICE_UNRESOLVED`: an `mc` price whose sample, plus three standard
+    errors, falls below the option's lower bound by more than 1e-6 of spot.
+    The mean-reverting process is exempt.
+  - `LOCAL_VOL_FIT_FAILED`: a local-vol surface that cannot be built, such
+    as a supplied surface the fit cannot use (malformed, empty, or without a
+    usable implied-vol node), a failed grid fit, or a Monte Carlo local-vol
+    surface that fails. These used to price at the request `sigma` or on the
+    CEV law, sometimes with a warning and sometimes without. An omitted or null
+    surface still prices on the CEV / constant law.
+  - `NON_FINITE_RESULT`, in three cases:
+    - a local-vol solve that cannot give a price, which used to read 0;
+    - a Merton series that cannot settle within an explicit `maxK` /
+      `maxPoisson`;
+    - an exotic price that is not finite, which used to read 0.
+
+    A non-finite exotic Greek now reads 0 with a warning. If an optional
+    exotic insight scenario cannot be priced, the insight is omitted instead
+    of showing a zero-price comparison. A scenario that exhausts the shared
+    compute allowance still refuses the request.
+  - `INVALID_BARRIER_MONITORING`: `monitoringType: "window"` or an unknown
+    mode, CSV or irregular `monitoringDates`, or an invalid discrete
+    frequency.
+  - `COMPUTE_BUDGET_EXCEEDED`: exact discrete-lookback work that exceeds
+    the request allowance, including work for Greeks and insight scenarios.
+    Fewer future fixings need less work. In a daily fixed-call example at
+    30% volatility, Greeks answered at seven years and exhausted the allowance
+    at eight. This is an example, not a tenor limit: the fixing count, model
+    parameters and numerical limits determine which requests answer.
+    Heston requests that exhaust their shared integration allowance can also
+    return this code where earlier requests ended as `NON_FINITE_RESULT`.
+- **API behavior change: requests that now answer.**
+  - For a valid CRR or JR price tree, binomial Greek stencils now stay
+    within its probability domain. This removes many Greek-only probability
+    refusals; request compute limits still apply.
+  - Heston recovers some long-tenor prices that previously failed, including
+    affected 18-year and longer requests. Integration and request compute
+    limits still apply.
+  - Single-strike Fourier prices and Greeks for `bs`, Merton, Kou, Heston and
+    Bates answer where the earlier law returned `NON_FINITE_RESULT`.
+  - Short, low-vol finite-difference Greeks and very-low-vol lookbacks answer.
+- **API value change: prices and Greeks move.**
+  - The affected normal-probability kernels now share a double-precision
+    implementation. In one checked Black-Scholes example, the absolute price
+    error fell from 8.7e-6 to 6e-15.
+    Black-Scholes, SABR, digital, barrier, Asian, multi-asset, simple chooser,
+    compound, Merton and the VG fallback move by the old kernel's error.
+  - Merton (`model="jd"`):
+    - every Poisson term is priced, where the old series read 14.8% low at
+      the forward and 123% high on an out-of-the-money call (lambda .5, vol .1).
+      Calibration now uses the same compensated series as pricing;
+    - the default term cap rises from 30 to 512, and an explicit `maxK` /
+      `maxPoisson` is a hard cap from 1 to 512;
+    - `tailTol` (default 1e-12, clamped to 1e-12 through 1e-2) now reaches
+      pricing and Greeks.
+  - Single-strike Fourier pricing (Black-Scholes, Merton, Kou, Heston, Bates):
+    - each prices its own law;
+    - at lambda 0, Kou and Merton use Black-Scholes and Bates uses Heston;
+    - `baseVolatility: 0` is honored;
+    - the FFT-selection options no longer select an approximate law for a
+      single strike.
+  - Binomial:
+    - CRR and JR vomma and ultima with cash dividends are corrected;
+    - so are LR's speed, dcharmDvol, vomma and ultima with cash dividends;
+    - where an accuracy fit cannot finish within the request, the native or
+      earlier estimate is kept and named in `warnings` (and, on a strategy
+      leg, in `retainedGreeks`).
+  - PDE (`model="pde"`):
+    - its time Greeks come from the solve's own time levels;
+    - the native theta is per 365 days (it was 365.25);
+    - supplied grid bounds are no longer widened, and a spot outside them
+      prices analytically;
+    - `rannacherSteps: 1` runs two startup intervals;
+    - grids under 101 cells fall back to Black-Scholes.
+  - Finite-difference Greeks:
+    - steps scale to the distribution, which corrects short, low-vol delta
+      and vanna among others;
+    - the generic time Greeks (theta, charm, veta, color, dcharmDvol) of
+      `heston`, `sabr`, Merton `jd`, `barrier`, `lookback`, `digital` and
+      `multiasset` normally use a central Richardson estimate. At time-domain
+      boundaries, an admitted one-sided estimate is used. If optional
+      refinement cannot finish, the previous estimate is kept with a notice.
+  - Local vol: the regularized Dupire grid fit is corrected. The default
+    eSSVI fit uses deterministic, confidence-weighted robust slice fits,
+    with notices for residual error and sparse maturities; constrained fits
+    need not reproduce every supplied quote. On a supplied surface, the
+    Monte Carlo volatility Greeks now use an additive shift of fitted local
+    volatility held at the base request, rather than a proportional scale
+    tied to the request `sigma`. Prebuilt grids keep their proportional scale.
+  - Lookback: one through 2,520 future discrete fixings use the actual
+    fixing law; larger counts retain a continuity approximation. The current
+    spot is excluded and the terminal spot included. Continuous spot Greeks
+    hold the observed record, and very low vols price.
+  - Barrier:
+    - double barriers and rebates price their actual payoff, where rebated
+      double barriers read as much as 1.4e129;
+    - an up-and-out call whose barrier cannot be reached prices as the
+      vanilla at very low vols, where it read 0;
+    - discrete monitoring now prices discretely. One future fixing uses
+      the exact terminal law; two or more use the Broadie-Glasserman-Kou
+      continuity approximation, with a warning on prices and Greeks;
+    - a numeric `monitoringFrequency` is accepted, and the default stays
+      continuous.
+  - Chooser: the analytical complex chooser never simulates, so its answers
+    repeat exactly. It used to sample unseeded Monte Carlo on many requests.
+  - Compound: the time Greeks use the exact calendar derivative, with a
+    warning where it does not resolve.
+  - Heston calibration fits each option's bid/ask. Its `fitError.ivRmse`
+    measures IV distance outside the quote relative to market IV; a fit
+    inside every quote reports 0. It is not comparable with earlier values.
+- **Latency:** some requests take longer:
+  - binomial Greeks with cash dividends;
+  - strategies with many binomial legs (a ten-leg example went from 186 ms to
+    3.96 s);
+  - thin-strike Heston Greeks (about 1 s in one measured case);
+  - discrete lookbacks with 3 through 2,520 future fixings, which count
+    against the expensive-compute concurrency limit.
+- Earlier SDK versions keep working against the current API, because they
+  ignore unknown fields. That also means 1.3.1 drops the new `warnings` and
+  `retainedGreeks` fields; upgrade to read them.
+
 ## [1.3.1] (2026-10-13)
 
 ### Changed

@@ -131,6 +131,105 @@ def test_calibration_save_and_from_json_roundtrip(tmp_path: Path) -> None:
     assert loaded.fit_error == {"rmse": 0.001}
     assert loaded.calibration_time_ms == 1234
     assert loaded.provider == "tradier"
+    assert loaded.warnings is None
+
+
+@respx.mock
+def test_localvol_calibration_json_params_survive_save_load_and_forwarding(tmp_path: Path) -> None:
+    surface = [
+        {"K": 600, "T": 0.25, "sigma": 0.22, "isCall": True},
+        {"K": 650, "T": 0.25, "sigma": 0.20, "isCall": True},
+        {"K": 700, "T": 0.25, "sigma": 0.19, "isCall": False},
+        {"K": 650, "T": 0.50, "sigma": 0.21, "isCall": True},
+    ]
+    surface_json = json.dumps(surface, separators=(",", ":"))
+    public_params = {
+        "impliedVolData": surface_json,
+        "interpolation": "essvi",
+        "ticker": "SPY",
+    }
+    warnings = [
+        "eSSVI slice fit exceeded its implied-volatility node-error budget. "
+        "The constrained slice fit is retained.",
+    ]
+    respx.post("https://data.optionsanalysissuite.com/v1/compute/calibrate").mock(
+        return_value=Response(200, json={
+            "model": "localvol", "symbol": "SPY",
+            "expiration": "2026-06-19",
+            "params": public_params,
+            "fitError": {"ivRmse": 0.0011, "nOptions": 4},
+            "calibrationTimeMs": 1230,
+            "calibrationId": "cal_temporary",
+            "provider": "tradier",
+            "warnings": warnings,
+        })
+    )
+
+    captured: dict[str, dict] = {}
+
+    def _price_handler(request):
+        captured["price"] = json.loads(request.content)
+        return Response(200, json={
+            "price": 12.34, "model": "Local Volatility",
+            "inputs": {
+                "isCall": True, "S": 650.0, "K": 650.0, "r": 0.05,
+                "q": 0.012, "sigma": 0.20, "t": 0.25,
+            },
+        })
+
+    def _greeks_handler(request):
+        captured["greeks"] = json.loads(request.content)
+        return Response(200, json={
+            "price": 12.34, "delta": 0.56, "model": "Local Volatility",
+            "inputs": {
+                "isCall": True, "S": 650.0, "K": 650.0, "r": 0.05,
+                "q": 0.012, "sigma": 0.20, "t": 0.25,
+            },
+        })
+
+    respx.post("https://data.optionsanalysissuite.com/v1/compute/price").mock(side_effect=_price_handler)
+    respx.post("https://data.optionsanalysissuite.com/v1/compute/greeks").mock(side_effect=_greeks_handler)
+
+    with OASClient(api_key="oas_test_xyz") as client:
+        cal = client.calibrate(
+            "SPY", model="localvol",
+            broker=TradierCredentials(token="ttok"),
+            expiration="2026-06-19",
+        )
+        assert cal.params == public_params
+        assert cal.warnings == warnings
+
+        path = tmp_path / "spy_localvol.json"
+        cal.save(path)
+        saved = json.loads(path.read_text())
+        assert saved["params"] == public_params
+        assert saved["warnings"] == warnings
+        assert "calibrationId" not in saved
+
+        loaded = Calibration.from_json(path, client=client)
+        assert loaded.model == "localvol"
+        assert loaded.params == public_params
+        assert loaded.fit_error == {"ivRmse": 0.0011, "nOptions": 4}
+        assert loaded.calibration_time_ms == 1230
+        assert loaded.provider == "tradier"
+        assert loaded.warnings == warnings
+
+        price = loaded.price(is_call=True, K=650, S=650, r=0.05, q=0.012, sigma=0.20, t=0.25)
+        greeks = loaded.greeks(is_call=True, K=650, S=650, r=0.05, q=0.012, sigma=0.20, t=0.25)
+
+    for endpoint in ("price", "greeks"):
+        payload = captured[endpoint]
+        assert payload["model"] == "localvol"
+        assert payload["modelParams"] == public_params
+        assert isinstance(payload["modelParams"]["impliedVolData"], str)
+        assert payload["modelParams"]["impliedVolData"] == surface_json
+        assert json.loads(payload["modelParams"]["impliedVolData"]) == surface
+        assert "calibrationId" not in payload
+        assert "symbol" not in payload
+
+    assert price.price == 12.34
+    assert greeks.price == 12.34
+    assert greeks.delta == 0.56
 
 
 def test_calibration_from_json_without_client_cannot_price(tmp_path: Path) -> None:

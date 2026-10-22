@@ -1,11 +1,14 @@
 """``Calibration`` domain object — durable wrapper around a ``/v1/compute/calibrate``
 result that exposes ``.price()``, ``.greeks()``, ``.save()``, and ``.from_json()``.
 
-The OAS API returns a 30-second-only ``calibrationId`` plus the actual fitted
-``params`` dict when you call ``/v1/compute/calibrate``. The ``Calibration``
-class persists the fitted ``params`` (durable) and forwards them as
-``modelParams`` on subsequent ``/price`` and ``/greeks`` calls — so users
-never have to think about the calibrationId TTL.
+The OAS API returns a 30-second-only ``calibrationId`` plus reusable ``params``
+when you call ``/v1/compute/calibrate``. For Heston, SABR, VG and JD, these are
+fitted model coefficients. For ``localvol``, they contain replayable
+``impliedVolData`` JSON and interpolation inputs; subsequent pricing refits
+those saved surface observations. ``Calibration`` persists the ``params``
+and optional calibration ``warnings``, and forwards ``params`` as
+``modelParams`` on subsequent ``/price`` and ``/greeks`` calls without
+depending on the calibrationId TTL.
 
 Typical flow::
 
@@ -40,11 +43,11 @@ _FILE_FORMAT_VERSION = 1
 class Calibration:
     """A persisted calibration result.
 
-    Holds the fitted ``params`` dict for one of the calibratable models
-    (``heston``, ``sabr``, ``vg``, ``jd``, ``localvol``). Use
-    :meth:`save` / :meth:`from_json` to round-trip via disk; use
-    :meth:`price` / :meth:`greeks` to evaluate the calibrated model
-    without re-running calibration.
+    Holds reusable ``params`` and optional ``warnings`` for ``heston``,
+    ``sabr``, ``vg``, ``jd`` or ``localvol``. Use :meth:`save` /
+    :meth:`from_json` to round-trip via disk, and :meth:`price` /
+    :meth:`greeks` to evaluate the model. Localvol refits the saved surface
+    observations; the other models reuse their fitted coefficients.
     """
 
     def __init__(
@@ -58,6 +61,7 @@ class Calibration:
         fit_diagnostics: dict[str, Any] | None = None,
         calibration_time_ms: float | None = None,
         provider: str | None = None,
+        warnings: list[str] | None = None,
         client: OASClient | None = None,
     ) -> None:
         if not model:
@@ -76,6 +80,7 @@ class Calibration:
         self.fit_diagnostics = fit_diagnostics
         self.calibration_time_ms = calibration_time_ms
         self.provider = provider
+        self.warnings = warnings
         # Bound client lets cal.price() / cal.greeks() work without re-passing it.
         # Calibration loaded via from_json() has _client=None until bind() is called.
         self._client = client
@@ -97,11 +102,12 @@ class Calibration:
         expiration: str | None = None,
         resolve: dict[str, Any] | None = None,
     ) -> PriceResponse:
-        """Price an option using this calibration's fitted params.
+        """Price an option using this calibration's reusable params.
 
         Forwards to ``/v1/compute/price`` with ``model=self.model`` and
         ``modelParams=self.params``. Other inputs (S, K, r, q, sigma, t)
         can be passed explicitly or auto-filled via ticker resolution.
+        For localvol, the API refits the saved surface observations.
 
         Symbol forwarding is suppressed only when the caller supplies
         ``S``, ``r``, ``q``, ``sigma``, **and numeric ``t``** — that's the
@@ -145,10 +151,11 @@ class Calibration:
         resolve: dict[str, Any] | None = None,
         include_insight: bool | None = None,
     ) -> GreeksResponse:
-        """Compute Greeks using this calibration's fitted params.
+        """Compute Greeks using this calibration's reusable params.
 
         Same ticker-resolution rules as :meth:`price`: ``symbol`` is only
-        forwarded when explicit numerics are incomplete.
+        forwarded when explicit numerics are incomplete. For localvol, the
+        API refits the saved surface observations.
         """
         client = self._require_client()
         return client.greeks(
@@ -224,6 +231,8 @@ class Calibration:
         }
         if self.fit_diagnostics is not None:
             out["fitDiagnostics"] = self.fit_diagnostics
+        if self.warnings is not None:
+            out["warnings"] = self.warnings
         return out
 
     def save(self, path: str | Path) -> None:
@@ -253,6 +262,7 @@ class Calibration:
             fit_diagnostics=data.get("fitDiagnostics"),
             calibration_time_ms=data.get("calibrationTimeMs"),
             provider=data.get("provider"),
+            warnings=data.get("warnings"),
             client=client,
         )
 

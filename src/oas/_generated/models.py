@@ -1200,7 +1200,7 @@ class CalibrateRequest(BaseModel):
     )
     modelParams: dict[str, Any] | None = Field(
         None,
-        description='Model-specific calibration options. Supported keys by model:\n\n**heston:** `accuracyMode` ("fast" | "balanced" | "precise", default "balanced")\n\n**sabr:** `fixBeta` (boolean, default true), `accuracyMode` ("fast" | "balanced" | "precise")\n\n**jd:** `modelType` / `jdModel` ("kou" | "merton" | "bates", default "kou")\n\n**vg / localvol:** no extra options',
+        description='Model-specific calibration options. Supported keys by model:\n\n**heston:** `accuracyMode` ("fast" | "balanced" | "precise", default "balanced")\n\n**sabr:** `fixBeta` (boolean, default true), `accuracyMode` ("fast" | "balanced" | "precise")\n\n**jd:** `modelType` / `jdModel` ("kou" | "merton" | "bates", default "kou")\n\n**vg / localvol:** no extra options. Local-vol calibration returns replayable `impliedVolData` as a JSON string, `interpolation: essvi`, and `ticker` in `params`; these replace the former eight global coefficients. The IV RMSE measures the selected fit at its usable normalized nodes. A large node residual or unidentified sparse-slice smile is reported in `warnings`; the default retains constrained slices. Saved params deterministically refit the supplied observations when priced.',
     )
 
 
@@ -1321,6 +1321,10 @@ class ExoticInsight(BaseModel):
     metrics: list[ExoticInsightMetric]
     verdict: str
     verdictType: VerdictType
+    warnings: list[str] | None = Field(
+        None,
+        description='Pricing approximation notices, including discrete barrier BGK monitoring.',
+    )
 
 
 class GreeksResponse(BaseModel):
@@ -1530,6 +1534,34 @@ class Model12(Enum):
     binomial = 'binomial'
 
 
+class Vomma(Enum):
+    native = 'native'
+    earlier = 'earlier'
+
+
+class Ultima(Enum):
+    native = 'native'
+    earlier = 'earlier'
+
+
+class Speed(Enum):
+    native = 'native'
+
+
+class DcharmDvol(Enum):
+    native = 'native'
+
+
+class RetainedGreeks(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+    )
+    vomma: Vomma | None = None
+    ultima: Ultima | None = None
+    speed: Speed | None = None
+    dcharmDvol: DcharmDvol | None = None
+
+
 class StrategyLeg(BaseModel):
     model_config = ConfigDict(
         extra='ignore',
@@ -1550,6 +1582,10 @@ class StrategyLeg(BaseModel):
     greeks: dict[str, float] = Field(
         ...,
         description='Per-contract Greeks for option legs, in the `/v1/compute/greeks` convention with the per-day Greeks per calendar day (365): `theta`, `charm`, `color`, `veta` and `dcharmDvol` are what one day of time passing does (see `greekTimeConvention`). `{ delta: 1 }` for stock.',
+    )
+    retainedGreeks: RetainedGreeks | None = Field(
+        None,
+        description='Only Greeks that retain a native or earlier completed estimate after an optional accuracy fit could not finish. Omitted when none do, including stock legs. Legs share one request allowance, so a leg can receive a fit alone and retain an estimate in a larger strategy. This labels the affected estimate without certifying its accuracy.',
     )
 
 
@@ -1624,6 +1660,11 @@ class StrategyResponse(BaseModel):
         description='The sign of the time Greeks in each leg and in `netGreeks`: what one day of time passing does, per calendar day, as on `/v1/compute/greeks` (see its `greekTimeConvention`). A response without it predates 2026-10-13 and carries `charm`, `color`, `veta` and `dcharmDvol` on the opposite sign.',
     )
     resolved: ResolvedSummary | None = None
+    warnings: list[str] | None = Field(
+        None,
+        description='A conditional notice when optional binomial accuracy fits cannot finish. Each affected leg identifies its retained estimates in retainedGreeks; fewer steps or fewer legs leave more allowance for fits.',
+        max_length=1,
+    )
 
 
 class PainByStrikeItem(BaseModel):
@@ -1691,10 +1732,17 @@ class RiskNeutral(BaseModel):
     pdf: list[PdfItem] | None = None
     cdf: list[CdfItem] | None = None
     stats: Stats | None = None
-    method: Method1 | None = None
+    method: Method1 | None = Field(
+        None,
+        description='essvi uses the calibrated constrained-slice surface and reports large node residuals in warnings; finite-diff uses the chain-price fallback.',
+    )
     methodLabel: str | None = None
     quality: Quality | None = None
     fallbackReason: str | None = None
+    warnings: list[str] | None = Field(
+        None,
+        description='Non-fatal notices about the fitted surface used for this distribution, including large eSSVI node residuals and sparse maturities whose smile shape is borrowed.',
+    )
 
 
 class Stats1(BaseModel):
@@ -1728,7 +1776,7 @@ class FitError(BaseModel):
     )
     ivRmse: float = Field(
         ...,
-        description='Aggregate IV RMSE across the options the fit was computed from. A calibration that does not converge returns a 422 `CALIBRATION_FAILED` rather than an `ivRmse` of 0 next to unfitted parameters.',
+        description='Aggregate IV RMSE across the options the fit was computed from. For Heston, an option priced inside its bid/ask counts zero and one outside counts its IV distance to the nearer side, relative to its market IV, so a fit that prices every option inside its quote reports 0. A calibration that does not converge returns a 422 `CALIBRATION_FAILED` rather than an `ivRmse` of 0 next to unfitted parameters.',
     )
     nOptions: int = Field(
         ...,
@@ -2415,3 +2463,7 @@ class CalibrateResponse(BaseModel):
     calibrationTimeMs: float
     calibrationId: str
     provider: str
+    warnings: list[str] | None = Field(
+        None,
+        description='Non-fatal notices about the calibrated surface, including large eSSVI node residuals and sparse maturities whose smile shape is borrowed.',
+    )

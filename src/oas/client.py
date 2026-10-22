@@ -601,9 +601,12 @@ class OASClient:
     ) -> Calibration:
         """Calibrate a model against live broker chain data (operationId ``compute.calibrate``).
 
-        Returns a :class:`Calibration` domain object that wraps the fitted
-        ``params``. Subsequent ``cal.price()`` / ``cal.greeks()`` calls use
-        ``modelParams=params`` for durable reuse — the 30-second-only
+        Returns a :class:`Calibration` domain object with reusable ``params``
+        and optional calibration ``warnings``. Subsequent ``cal.price()`` /
+        ``cal.greeks()`` calls use ``modelParams=params`` for durable reuse.
+        For ``localvol``, params contains replayable ``impliedVolData`` JSON
+        and interpolation inputs, which the API refits on reuse. The other
+        models retain their fitted coefficients. The 30-second-only
         ``calibrationId`` is intentionally not surfaced.
 
         Args:
@@ -659,6 +662,7 @@ class OASClient:
             fit_diagnostics=resp.get("fitDiagnostics"),
             calibration_time_ms=resp.get("calibrationTimeMs"),
             provider=resp.get("provider"),
+            warnings=resp.get("warnings"),
             client=self,
         )
 
