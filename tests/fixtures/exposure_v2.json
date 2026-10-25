@@ -1,0 +1,201 @@
+{
+  "methodology": 2,
+  "methodologySource": "request",
+  "exposureV2": {
+    "methodology": 2,
+    "rollModel": "log-forward-theil-sen-v1",
+    "units": {
+      "gex": "USD of delta per 1% move",
+      "vegaExposure": "USD per vol point",
+      "vanna": "USD of delta per vol point",
+      "charmFlow": "USD per calendar day",
+      "vomma": "USD per (vol point)^2",
+      "putMinusCallDeltaBalance": "USD, underlying-equivalent"
+    },
+    "source": "request",
+    "asOf": "2026-10-23T15:00:00.000Z",
+    "scope": {
+      "expirations": "all"
+    },
+    "referenceKind": "spot",
+    "charmTimeBasis": "calendar-day",
+    "rollStatus": "notApplicable",
+    "carry": null,
+    "carryFit": null,
+    "assumedDealerBook": {
+      "gex": 33000000,
+      "vegaExposure": 492000,
+      "vanna": -248765.73056581686,
+      "charmFlow": 161946.3337580443,
+      "vomma": 1289.1994336774023
+    },
+    "longOi": {
+      "gex": 231000000,
+      "vegaExposure": 3443999.9999999995,
+      "vanna": -1741360.113960718,
+      "charmFlow": 1645701.6539406853,
+      "vomma": 9024.396035741822
+    },
+    "putMinusCallDeltaBalance": -258000000,
+    "bases": {
+      "call": {
+        "gex": 132000000,
+        "dex": 1176000000,
+        "vega": 1967999.9999999998,
+        "vanna": -995062.9222632675,
+        "charmFixedRef": -903823.9938493648,
+        "rollBasis": null,
+        "vomma": 5156.797734709612
+      },
+      "put": {
+        "gex": 99000000,
+        "dex": -918000000,
+        "vega": 1475999.9999999998,
+        "vanna": -746297.1916974506,
+        "charmFixedRef": -741877.6600913205,
+        "rollBasis": null,
+        "vomma": 3867.5983010322097
+      }
+    },
+    "coverage": {
+      "gamma": {
+        "included": 8,
+        "total": 8,
+        "status": "complete"
+      },
+      "delta": {
+        "included": 8,
+        "total": 8,
+        "status": "complete"
+      },
+      "vega": {
+        "included": 8,
+        "total": 8,
+        "status": "complete"
+      },
+      "vanna": {
+        "included": 8,
+        "total": 8,
+        "status": "complete"
+      },
+      "charm": {
+        "included": 8,
+        "total": 8,
+        "status": "complete"
+      },
+      "vomma": {
+        "included": 8,
+        "total": 8,
+        "status": "complete"
+      }
+    },
+    "expiryScope": "intraday-clock-1",
+    "expiryCensus": {
+      "inScope": 4,
+      "expired": 0,
+      "unscoped": 0
+    },
+    "byStrike": [
+      {
+        "strike": 4950,
+        "assumedDealerBook": {
+          "gex": 16500000,
+          "vegaExposure": 246000,
+          "vanna": -1215211.9601320215,
+          "charmFlow": -188068.65249753796,
+          "vomma": 1013.1872651665781
+        },
+        "longOi": {
+          "gex": 115500000,
+          "vegaExposure": 1721999.9999999998,
+          "vanna": -8506483.720924146,
+          "charmFlow": -1060441.9086655779,
+          "vomma": 7092.310856166047
+        },
+        "putMinusCallDeltaBalance": -192000000,
+        "coverage": {
+          "gamma": {
+            "included": 4,
+            "total": 4,
+            "status": "complete"
+          },
+          "delta": {
+            "included": 4,
+            "total": 4,
+            "status": "complete"
+          },
+          "vega": {
+            "included": 4,
+            "total": 4,
+            "status": "complete"
+          },
+          "vanna": {
+            "included": 4,
+            "total": 4,
+            "status": "complete"
+          },
+          "charm": {
+            "included": 4,
+            "total": 4,
+            "status": "complete"
+          },
+          "vomma": {
+            "included": 4,
+            "total": 4,
+            "status": "complete"
+          }
+        }
+      },
+      {
+        "strike": 5050,
+        "assumedDealerBook": {
+          "gex": 16500000,
+          "vegaExposure": 246000,
+          "vanna": 966446.2295662039,
+          "charmFlow": 350014.9862555824,
+          "vomma": 276.01216851082506
+        },
+        "longOi": {
+          "gex": 115500000,
+          "vegaExposure": 1721999.9999999998,
+          "vanna": 6765123.606963428,
+          "charmFlow": 2706143.562606263,
+          "vomma": 1932.0851795757744
+        },
+        "putMinusCallDeltaBalance": -66000000,
+        "coverage": {
+          "gamma": {
+            "included": 4,
+            "total": 4,
+            "status": "complete"
+          },
+          "delta": {
+            "included": 4,
+            "total": 4,
+            "status": "complete"
+          },
+          "vega": {
+            "included": 4,
+            "total": 4,
+            "status": "complete"
+          },
+          "vanna": {
+            "included": 4,
+            "total": 4,
+            "status": "complete"
+          },
+          "charm": {
+            "included": 4,
+            "total": 4,
+            "status": "complete"
+          },
+          "vomma": {
+            "included": 4,
+            "total": 4,
+            "status": "complete"
+          }
+        }
+      }
+    ]
+  }
+}

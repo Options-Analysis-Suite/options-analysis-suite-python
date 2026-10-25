@@ -41,10 +41,11 @@ Typical usage::
 from __future__ import annotations
 
 from collections.abc import Iterator
-from typing import Any
+from typing import Any, Literal, overload
 from urllib.parse import quote
 
 from oas._generated.models import (
+    EodExposureResponse,
     ExpectedMoveResponse,
     ExposureResponse,
     GreeksResponse,
@@ -276,18 +277,24 @@ class OASClient:
         self,
         *,
         strikes: list[dict[str, Any]],
-        spot_price: float,
+        spot_price: float | None = None,
         risk_free_rate: float | None = None,
         dividend_yield: float | None = None,
         wall_max_dte: float | None = None,
         detail: str | None = None,
+        methodology: Literal[1, 2] | None = None,
+        symbol: str | None = None,
+        as_of: str | None = None,
     ) -> ExposureResponse:
         """Compute Greek exposure profile (operationId ``compute.exposure``).
 
         Aggregates per-strike option exposure (GEX, DEX, VEX, Vanna, Charm,
-        Vomma) under the standard dealer-hedging convention: retail is
-        assumed net long calls and net short puts; dealers take the
-        offsetting position.
+        Vomma) under one of two methodologies. Methodology 1 (legacy) takes
+        the standard dealer-hedging convention (retail assumed net long calls
+        and net short puts, dealers the offsetting position) and adds walls,
+        the gamma flip and the regime. Methodology 2 is the assumed dealer
+        book and Long OI over each side's bases, with their coverage and no
+        walls, flip or regime.
 
         Args:
             strikes: List of per-strike rows. Required keys: ``strike_cents``,
@@ -295,26 +302,49 @@ class OASClient:
                 ``delta``, ``vega``, ``smooth_smv_vol``, ``c_mid_iv``,
                 ``p_mid_iv``, ``yte``, ``expir_date``.
             spot_price: Current spot price for the underlying (in dollars).
-            risk_free_rate: Annual rate (decimal). Server defaults to 0.05.
-            dividend_yield: Annual yield (decimal). Server defaults to 0.
+            risk_free_rate: Annual rate (decimal).
+            dividend_yield: Annual yield (decimal).
+                The server never assumes these three. Each is required unless
+                ``symbol`` lets the API resolve it (the answer's ``resolved``
+                block says which it filled); a missing one is a 422 naming
+                it. A methodology 2 book for a forward-priced index (``symbol``
+                such as ``"SPX"``) reads only the rate.
             wall_max_dte: Cap (days) for considering a strike a "wall"
-                candidate. Server-side default if omitted.
-            detail: ``"snapshot"`` for the flat :class:`ExposureSnapshot`
-                shape; omit (or any other value) for the full
-                ``{snapshot, byStrike}`` wrapper.
+                candidate (methodology 1). Server-side default if omitted.
+            detail: methodology 1: ``"snapshot"`` for the flat
+                :class:`ExposureSnapshot` shape; omit (or any other value)
+                for the full ``{snapshot, byStrike}`` wrapper. Methodology 2
+                always answers :class:`ExposureResponseV2`: ``"snapshot"``
+                leaves out ``exposureV2.byStrike``, the per-strike views.
+            methodology: ``1`` or ``2``. Omitted, the service's central
+                default, and the answer's ``methodologySource`` says
+                ``"default"``. Name it to keep one shape when the default
+                changes. A 503 when the default cannot be read.
+            symbol: The underlying, for resolving missing market inputs and
+                for a forward-priced index's methodology 2 book.
+            as_of: Methodology 2: the ISO 8601 instant the expiry scope is
+                applied at (default the request time). A leg counts until its
+                expiration session's close.
 
         Returns:
-            :class:`ExposureResponse` — a ``oneOf`` union. Access
-            ``.root`` to dispatch on the variant.
+            :class:`ExposureResponse` — a ``oneOf`` union. Dispatch on
+            ``.root``: :class:`ExposureFullResult` or
+            :class:`ExposureSnapshot` for methodology 1,
+            :class:`ExposureResponseV2` (``.root.exposureV2``) for
+            methodology 2. ``.root.methodology`` names it.
 
         Raises:
-            ValidationError: malformed strike rows.
+            ValidationError: malformed strike rows, or a missing input.
             AuthenticationError / PermissionDeniedError: API key / scope.
+            ServerError: a 503 when no methodology is named and the default
+                could not be read (retryable; ``code`` is
+                ``DEFAULT_METHODOLOGY_UNAVAILABLE``).
         """
         payload = _drop_none({
             "strikes": strikes, "spotPrice": spot_price,
             "riskFreeRate": risk_free_rate, "dividendYield": dividend_yield,
-            "wallMaxDte": wall_max_dte,
+            "wallMaxDte": wall_max_dte, "methodology": methodology,
+            "symbol": symbol, "asOf": as_of,
         })
         params = {"detail": detail} if detail else None
         body = self._transport.request(
@@ -808,24 +838,47 @@ class OASClient:
         )
         return IVSurfaceResponse.model_validate(body)
 
-    def exposure_eod(self, symbol: str, *, date: str | None = None) -> dict[str, Any]:
+    @overload
+    def exposure_eod(
+        self, symbol: str, *, date: str | None = ..., typed: Literal[False] = ...,
+    ) -> dict[str, Any]: ...
+
+    @overload
+    def exposure_eod(
+        self, symbol: str, *, date: str | None = ..., typed: Literal[True],
+    ) -> EodExposureResponse: ...
+
+    @overload
+    def exposure_eod(
+        self, symbol: str, *, date: str | None = ..., typed: bool = ...,
+    ) -> dict[str, Any] | EodExposureResponse: ...
+
+    def exposure_eod(
+        self, symbol: str, *, date: str | None = None, typed: bool = False,
+    ) -> dict[str, Any] | EodExposureResponse:
         """End-of-day dealer-positioning levels for a symbol (operationId
         ``data.exposure.bySymbol``).
 
-        A compact set of exposure levels computed over a single 0-60 DTE universe
-        (so every field agrees): ``gammaMagnet``, ``gammaFlip``, ``callWall``,
-        ``putWall``, ``dealerRegime``, net GEX/DEX, the 30-day expected move, and
-        the top contributing strikes. One row per (symbol, date) — the symbol-keyed
+        A compact set of legacy (methodology 1) exposure levels computed over a
+        single 0-60 DTE universe (so those fields agree): ``gammaMagnet``,
+        ``gammaFlip``, ``callWall``, ``putWall``, ``dealerRegime``, net GEX/DEX,
+        the 30-day expected move, and the top contributing strikes. Beside them,
+        ``exposureV2`` is methodology 2's stored book, over its own expiry scope
+        rather than that window. One row per (symbol, date) — the symbol-keyed
         EOD counterpart to :meth:`exposure`, which computes from a caller-supplied
         live chain.
 
         Args:
             symbol: Underlying ticker (e.g. ``"TSLA"``).
             date: Optional ``YYYY-MM-DD`` session; defaults to the latest close.
+            typed: ``True`` returns the :class:`EodExposureResponse` model, its
+                ``exposureV2`` (methodology 2) included; the default ``False``
+                keeps the ``dict`` this method has always returned.
 
         Returns:
             The exposure payload as a ``dict`` (see the ``EodExposureResponse``
-            schema in the OpenAPI spec). ``gammaMagnet`` / ``gammaFlip`` /
+            schema in the OpenAPI spec), or that model with ``typed=True``.
+            ``gammaMagnet`` / ``gammaFlip`` /
             ``callWall`` / ``putWall`` may be ``None`` for thinly-traded names;
             ``netGex`` / ``netDex`` units are spelled out in the ``units`` block.
 
@@ -842,6 +895,8 @@ class OASClient:
         body = self._transport.request(
             "GET", f"/v1/data/exposure/{_path_param(symbol)}", params=params or None,
         )
+        if typed:
+            return EodExposureResponse.model_validate(body)
         return _ensure_dict(body)
 
     def greeks_history(self, symbol: str, *, days: int | None = None) -> dict[str, Any]:

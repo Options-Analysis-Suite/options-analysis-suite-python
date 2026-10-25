@@ -21,6 +21,524 @@ from pydantic import (
 )
 
 
+class ExposureV2BookValues(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+    )
+    gex: float | None = Field(
+        None,
+        description="The change in the view's underlying-equivalent delta for a +1% move of the reference (USD of delta per 1% move).",
+    )
+    vegaExposure: float | None = Field(
+        None,
+        description="The change in the view's option value for +1 vol point (USD per vol point).",
+    )
+    vanna: float | None = Field(
+        None,
+        description="The change in the view's delta for +1 vol point: positive means its delta-neutral hedger sells when IV rises (USD of delta per vol point).",
+    )
+    charmFlow: float | None = Field(
+        None,
+        description="The underlying-equivalent USD the view's holder trades per calendar day to stay delta-neutral: positive means buying (USD per calendar day).",
+    )
+    vomma: float | None = Field(
+        None,
+        description="The change in the view's per-point vega exposure for +1 vol point (USD per (vol point)^2).",
+    )
+
+
+class ExposureV2SideBases(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+    )
+    gex: float | None
+    dex: float | None
+    vega: float | None
+    vanna: float | None
+    charmFixedRef: float | None
+    rollBasis: float | None
+    vomma: float | None
+
+
+class Status(Enum):
+    complete = 'complete'
+    partial = 'partial'
+    unavailable = 'unavailable'
+
+
+class Gamma(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+    )
+    included: int
+    total: int
+    status: Status
+
+
+class Delta(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+    )
+    included: int
+    total: int
+    status: Status
+
+
+class Vega(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+    )
+    included: int
+    total: int
+    status: Status
+
+
+class Vanna(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+    )
+    included: int
+    total: int
+    status: Status
+
+
+class Charm(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+    )
+    included: int
+    total: int
+    status: Status
+
+
+class Vomma(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+    )
+    included: int
+    total: int
+    status: Status
+
+
+class ExposureV2Coverage(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+    )
+    gamma: Gamma
+    delta: Delta
+    vega: Vega
+    vanna: Vanna
+    charm: Charm
+    vomma: Vomma
+
+
+class RollModel(Enum):
+    log_forward_theil_sen_v1 = 'log-forward-theil-sen-v1'
+
+
+class Units(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+    )
+    gex: str
+    vegaExposure: str
+    vanna: str
+    charmFlow: str
+    vomma: str
+    putMinusCallDeltaBalance: str
+
+
+class Expirations(Enum):
+    all = 'all'
+    field_0_60d = '0-60d'
+
+
+class Scope(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+    )
+    expirations: Expirations | list[date_aliased]
+
+
+class ReferenceKind(Enum):
+    spot = 'spot'
+    forward = 'forward'
+    future = 'future'
+
+
+class CharmTimeBasis(Enum):
+    calendar_day = 'calendar-day'
+
+
+class RollStatus(Enum):
+    notApplicable = 'notApplicable'
+    fitted = 'fitted'
+    insufficientData = 'insufficientData'
+    rejectedFit = 'rejectedFit'
+
+
+class CarryFit(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+    )
+    n: int = Field(..., description='Expirations 7 days to a year out.')
+    span: float = Field(..., description='Their span, years.')
+    distinctForwardCount: int
+    scale: float | None = Field(..., description="The residuals' robust scale.")
+    looMaxDeviation: float | None
+
+
+class Bases(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+    )
+    call: ExposureV2SideBases
+    put: ExposureV2SideBases
+
+
+class ExpiryScope(Enum):
+    eod_session_1 = 'eod-session-1'
+    intraday_clock_1 = 'intraday-clock-1'
+
+
+class ExposureV2Block(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+    )
+    methodology: Literal[2] = Field(
+        ...,
+        description="Methodology 2: the assumed dealer book and Long OI over the chain's per-side bases.",
+    )
+    rollModel: RollModel = Field(
+        ...,
+        description="The carry model a forward-referenced chain's charm rolls under.",
+    )
+    units: Units = Field(..., description="Each reported number's unit.")
+    source: str = Field(
+        ...,
+        description='What the book was computed from, in words: "eod_options_chain" or "eod_futures_options_chain" for a stored end-of-day book, "intraday_options_chain" for a regime row\'s intraday book, "request" for a submitted chain, "live_broker_chain" for a stream event\'s broker window.',
+    )
+    asOf: str = Field(
+        ...,
+        description="What the numbers are as of: a stored book's market date (YYYY-MM-DD), a computed one's instant (ISO 8601).",
+    )
+    scope: Scope = Field(
+        ...,
+        description='Which expirations the numbers sum: every one ("all"), the 0-60 day window, or the named dates.',
+    )
+    referenceKind: ReferenceKind = Field(
+        ...,
+        description="The price the book's deltas and dollar Greeks are on: the spot, each expiration's forward (an index), or the future.",
+    )
+    charmTimeBasis: CharmTimeBasis = Field(
+        ..., description='Charm flow is per calendar day.'
+    )
+    rollStatus: RollStatus = Field(
+        ...,
+        description="The carry fit's outcome: notApplicable for a spot or future reference.",
+    )
+    carry: float | None = Field(
+        None,
+        description='The fitted carry (log forward per year), only when rollStatus is fitted.',
+    )
+    carryFit: CarryFit | None
+    assumedDealerBook: ExposureV2BookValues = Field(
+        ...,
+        description='The assumed dealer book at a dealer share of 1: dealers long every call and short every put of open interest. It scales linearly in the share.',
+    )
+    longOi: ExposureV2BookValues = Field(
+        ...,
+        description="Long OI: the book of every open contract's holder, long calls and long puts.",
+    )
+    putMinusCallDeltaBalance: float | None = Field(
+        None,
+        description="DEX: the negated sum of the long holders' call and put deltas, the same in every view and at every p (USD, underlying-equivalent).",
+    )
+    bases: Bases = Field(
+        ...,
+        description="Each side's long-holder bases, the inputs every view is built from.",
+    )
+    coverage: ExposureV2Coverage
+    expiryScope: ExpiryScope | None = Field(
+        None,
+        description='Which expiring legs the book leaves out: "eod-session-1" (an end-of-day book as of its market date drops the legs whose expiration session is on or before it) or "intraday-clock-1" (a live book keeps an expiration until its session\'s close: 16:00 ET, or 13:00 ET on an NYSE early close). Absent on a stored book written before the rule, which counted every leg.',
+    )
+
+
+class ExposureV2Strike(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+    )
+    strike: float
+    assumedDealerBook: ExposureV2BookValues
+    longOi: ExposureV2BookValues
+    putMinusCallDeltaBalance: float | None
+    coverage: ExposureV2Coverage
+
+
+class Kind(Enum):
+    mayInclude = 'mayInclude'
+
+
+class Cause(Enum):
+    pending = 'pending'
+    unverified = 'unverified'
+
+
+class ExposureV2Qualifier1(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+    )
+    kind: Kind
+    cause: Cause
+
+
+class Kind1(Enum):
+    affected = 'affected'
+
+
+class Disposition(Enum):
+    deferred = 'deferred'
+    refused = 'refused'
+
+
+class ExposureV2Qualifier2(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+    )
+    kind: Kind1
+    disposition: Disposition
+
+
+class Kind2(Enum):
+    unscoped = 'unscoped'
+
+
+class ExposureV2Qualifier3(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+    )
+    kind: Kind2
+    strikes: int | None
+
+
+class ExposureV2Qualifier(
+    RootModel[ExposureV2Qualifier1 | ExposureV2Qualifier2 | ExposureV2Qualifier3]
+):
+    root: ExposureV2Qualifier1 | ExposureV2Qualifier2 | ExposureV2Qualifier3 = Field(
+        ...,
+        description="Why a stored book's values may count contracts that expired on its date: mayInclude (the expiry-scope correction pending, or its outcome unverified), affected (the repair found the date affected and deferred or refused its correction), or unscoped (strikes whose expiration could not be read, their count; null when the count could not be read).",
+    )
+
+
+class Scope1(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+    )
+    expirations: Expirations | list[date_aliased]
+
+
+class Provenance(Enum):
+    nightly = 'nightly'
+    reconstruction = 'reconstruction'
+
+
+class Definition(Enum):
+    expiry_scoped = 'expiry-scoped'
+    legacy_scope = 'legacy-scope'
+
+
+class ByStrikeUnavailable(Enum):
+    past_date = 'past date'
+    no_curve = 'no curve'
+    curve_of_another_run = 'curve of another run'
+    unreadable_curve = 'unreadable curve'
+
+
+class ExposureV2Stored(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+    )
+    available: Literal[True]
+    methodology: Literal[2] = Field(
+        ...,
+        description="Methodology 2: the assumed dealer book and Long OI over the chain's per-side bases.",
+    )
+    rollModel: RollModel = Field(
+        ...,
+        description="The carry model a forward-referenced chain's charm rolls under.",
+    )
+    units: Units = Field(..., description="Each reported number's unit.")
+    source: str = Field(
+        ...,
+        description='What the book was computed from, in words: "eod_options_chain" or "eod_futures_options_chain" for a stored end-of-day book, "intraday_options_chain" for a regime row\'s intraday book, "request" for a submitted chain, "live_broker_chain" for a stream event\'s broker window.',
+    )
+    asOf: str = Field(
+        ...,
+        description="What the numbers are as of: a stored book's market date (YYYY-MM-DD), a computed one's instant (ISO 8601).",
+    )
+    scope: Scope1 = Field(
+        ...,
+        description='Which expirations the numbers sum: every one ("all"), the 0-60 day window, or the named dates.',
+    )
+    referenceKind: ReferenceKind = Field(
+        ...,
+        description="The price the book's deltas and dollar Greeks are on: the spot, each expiration's forward (an index), or the future.",
+    )
+    charmTimeBasis: CharmTimeBasis = Field(
+        ..., description='Charm flow is per calendar day.'
+    )
+    rollStatus: RollStatus = Field(
+        ...,
+        description="The carry fit's outcome: notApplicable for a spot or future reference.",
+    )
+    carry: float | None = Field(
+        None,
+        description='The fitted carry (log forward per year), only when rollStatus is fitted.',
+    )
+    carryFit: CarryFit | None
+    assumedDealerBook: ExposureV2BookValues = Field(
+        ...,
+        description='The assumed dealer book at a dealer share of 1: dealers long every call and short every put of open interest. It scales linearly in the share.',
+    )
+    longOi: ExposureV2BookValues = Field(
+        ...,
+        description="Long OI: the book of every open contract's holder, long calls and long puts.",
+    )
+    putMinusCallDeltaBalance: float | None = Field(
+        None,
+        description="DEX: the negated sum of the long holders' call and put deltas, the same in every view and at every p (USD, underlying-equivalent).",
+    )
+    bases: Bases = Field(
+        ...,
+        description="Each side's long-holder bases, the inputs every view is built from.",
+    )
+    coverage: ExposureV2Coverage
+    expiryScope: ExpiryScope | None = Field(
+        None,
+        description='Which expiring legs the book leaves out: "eod-session-1" (an end-of-day book as of its market date drops the legs whose expiration session is on or before it) or "intraday-clock-1" (a live book keeps an expiration until its session\'s close: 16:00 ET, or 13:00 ET on an NYSE early close). Absent on a stored book written before the rule, which counted every leg.',
+    )
+    provenance: Provenance = Field(
+        ..., description='Written by the nightly, or by the history reconstruction.'
+    )
+    definition: Definition = Field(
+        ...,
+        description='expiry-scoped: the book drops the legs that expired on its date. legacy-scope: written before that rule; expiryQualifier says what is known.',
+    )
+    expiryQualifier: ExposureV2Qualifier | None
+    byStrike: list[ExposureV2Strike] | None = Field(
+        None,
+        description="Each strike's views: on the newest date, from the strike curve of the same publication.",
+    )
+    byStrikeUnavailable: ByStrikeUnavailable | None = Field(
+        None, description='Present exactly when byStrike is absent: why.'
+    )
+
+
+class Reason(Enum):
+    no_methodology_2_row = 'no methodology-2 row'
+    publication_run_mismatch = 'publication run mismatch'
+    unreadable = 'unreadable'
+
+
+class ExposureV2Unavailable(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+    )
+    available: Literal[False]
+    reason: Reason
+
+
+class Scope2(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+    )
+    expirations: Expirations | list[date_aliased]
+
+
+class ExpiryCensus(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+    )
+    inScope: int
+    expired: int
+    unscoped: int
+
+
+class ExposureV2Computed(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+    )
+    methodology: Literal[2] = Field(
+        ...,
+        description="Methodology 2: the assumed dealer book and Long OI over the chain's per-side bases.",
+    )
+    rollModel: RollModel = Field(
+        ...,
+        description="The carry model a forward-referenced chain's charm rolls under.",
+    )
+    units: Units = Field(..., description="Each reported number's unit.")
+    source: str = Field(
+        ...,
+        description='What the book was computed from, in words: "eod_options_chain" or "eod_futures_options_chain" for a stored end-of-day book, "intraday_options_chain" for a regime row\'s intraday book, "request" for a submitted chain, "live_broker_chain" for a stream event\'s broker window.',
+    )
+    asOf: str = Field(
+        ...,
+        description="What the numbers are as of: a stored book's market date (YYYY-MM-DD), a computed one's instant (ISO 8601).",
+    )
+    scope: Scope2 = Field(
+        ...,
+        description='Which expirations the numbers sum: every one ("all"), the 0-60 day window, or the named dates.',
+    )
+    referenceKind: ReferenceKind = Field(
+        ...,
+        description="The price the book's deltas and dollar Greeks are on: the spot, each expiration's forward (an index), or the future.",
+    )
+    charmTimeBasis: CharmTimeBasis = Field(
+        ..., description='Charm flow is per calendar day.'
+    )
+    rollStatus: RollStatus = Field(
+        ...,
+        description="The carry fit's outcome: notApplicable for a spot or future reference.",
+    )
+    carry: float | None = Field(
+        None,
+        description='The fitted carry (log forward per year), only when rollStatus is fitted.',
+    )
+    carryFit: CarryFit | None
+    assumedDealerBook: ExposureV2BookValues = Field(
+        ...,
+        description='The assumed dealer book at a dealer share of 1: dealers long every call and short every put of open interest. It scales linearly in the share.',
+    )
+    longOi: ExposureV2BookValues = Field(
+        ...,
+        description="Long OI: the book of every open contract's holder, long calls and long puts.",
+    )
+    putMinusCallDeltaBalance: float | None = Field(
+        None,
+        description="DEX: the negated sum of the long holders' call and put deltas, the same in every view and at every p (USD, underlying-equivalent).",
+    )
+    bases: Bases = Field(
+        ...,
+        description="Each side's long-holder bases, the inputs every view is built from.",
+    )
+    coverage: ExposureV2Coverage
+    expiryScope: ExpiryScope | None = Field(
+        None,
+        description='Which expiring legs the book leaves out: "eod-session-1" (an end-of-day book as of its market date drops the legs whose expiration session is on or before it) or "intraday-clock-1" (a live book keeps an expiration until its session\'s close: 16:00 ET, or 13:00 ET on an NYSE early close). Absent on a stored book written before the rule, which counted every leg.',
+    )
+    expiryCensus: ExpiryCensus = Field(
+        ...,
+        description='The submitted legs by the clock rule: kept in scope, dropped as expired, kept with an unreadable expiration (no expir_date).',
+    )
+    byStrike: list[ExposureV2Strike] | None = None
+
+
+class MethodologySource(Enum):
+    request = 'request'
+    default = 'default'
+
+
 class Model(Enum):
     bs = 'bs'
     heston = 'heston'
@@ -584,6 +1102,11 @@ class Resolve6(BaseModel):
     calibration: bool | None = False
 
 
+class Methodology(IntEnum):
+    integer_1 = 1
+    integer_2 = 2
+
+
 class ExposureRequest(BaseModel):
     strikes: list[Strike] = Field(..., max_length=5000, min_length=1)
     spotPrice: PositiveFloat | None = None
@@ -614,6 +1137,14 @@ class ExposureRequest(BaseModel):
         validate_default=True,
     )
     wallMaxDte: float | None = None
+    methodology: Methodology | None = Field(
+        None,
+        description='Which engine computes the exposure: 1 (legacy: walls, flip and regime) or 2 (the assumed dealer book and Long OI over the chain\'s per-side bases, with a forward basis for an index). Omitted: the service\'s central default (1 until the cutover), and the answer says which it used (methodologySource "default"); a 503 when that default cannot be read. Methodology 2 references each row\'s own forward only for a named forward-priced index (send `symbol`): its rows must be forward-encoded, stk_px_cents being that expiration\'s forward, as the end-of-day vendor encodes it from 2024-04-02; a historical asOf does not make prepaid-era rows supported. Such a book reads only riskFreeRate (q = r), so spotPrice and dividendYield need not be sent or resolved. Every other chain is on the resolved spot.',
+    )
+    asOf: AwareDatetime | None = Field(
+        None,
+        description="Methodology 2 only: the instant its expiry scope is applied at (ISO 8601; default the request time). A leg counts until its expiration session's close (16:00 ET, or 13:00 ET on an NYSE early close); a row without expir_date counts as unscoped and stays in.",
+    )
 
 
 class Resolve7(BaseModel):
@@ -1445,6 +1976,17 @@ class ExposureSnapshot(BaseModel):
         ..., description='Top-10 strikes by absolute net gamma'
     )
     resolved: ResolvedSummary | None = None
+    methodology: Literal[1] | None = Field(
+        None, description='Methodology 1 (legacy): walls, flip and regime.'
+    )
+    methodologySource: MethodologySource | None = Field(
+        None,
+        description="request: the methodology the request named. default: the service's central default, as read for this request.",
+    )
+    methodologyStale: Literal[True] | None = Field(
+        None,
+        description='Present only when the default could not be re-read and its last good value was used.',
+    )
 
 
 class ExposureFullResult(BaseModel):
@@ -1454,12 +1996,16 @@ class ExposureFullResult(BaseModel):
     snapshot: ExposureSnapshot
     byStrike: list[ExposureStrike]
     resolved: ResolvedSummary | None = None
-
-
-class ExposureResponse(RootModel[ExposureFullResult | ExposureSnapshot]):
-    root: ExposureFullResult | ExposureSnapshot = Field(
-        ...,
-        description='Default: ExposureFullResult ({ snapshot, byStrike }). With ?detail=snapshot: ExposureSnapshot directly.',
+    methodology: Literal[1] | None = Field(
+        None, description='Methodology 1 (legacy): walls, flip and regime.'
+    )
+    methodologySource: MethodologySource | None = Field(
+        None,
+        description="request: the methodology the request named. default: the service's central default, as read for this request.",
+    )
+    methodologyStale: Literal[True] | None = Field(
+        None,
+        description='Present only when the default could not be re-read and its last good value was used.',
     )
 
 
@@ -1534,7 +2080,7 @@ class Model12(Enum):
     binomial = 'binomial'
 
 
-class Vomma(Enum):
+class Vomma1(Enum):
     native = 'native'
     earlier = 'earlier'
 
@@ -1556,7 +2102,7 @@ class RetainedGreeks(BaseModel):
     model_config = ConfigDict(
         extra='ignore',
     )
-    vomma: Vomma | None = None
+    vomma: Vomma1 | None = None
     ultima: Ultima | None = None
     speed: Speed | None = None
     dcharmDvol: DcharmDvol | None = None
@@ -1854,8 +2400,8 @@ class SnapshotResponse(BaseModel):
     date: date_aliased
     spotPrice: float | None
     maxPain: float | None
-    netGex: float | None
-    netDex: float | None
+    netGex: float | None = Field(..., description='Methodology 1 (legacy) net GEX.')
+    netDex: float | None = Field(..., description='Methodology 1 (legacy) net DEX.')
     atmIv: float | None
     atmIv7d: float | None
     atmIv30d: float | None
@@ -1910,6 +2456,9 @@ class SnapshotResponse(BaseModel):
     )
     analyticsExpiry: str | None
     chainExpiry: str | None
+    exposureV2: ExposureV2Stored | ExposureV2Unavailable | None = Field(
+        None, description='Methodology 2 beside the legacy fields, never inside them.'
+    )
 
 
 class SchemaVersion(IntEnum):
@@ -1997,6 +2546,9 @@ class EodExposureResponse(BaseModel):
     units: dict[str, str] = Field(
         ...,
         description='Plain-language units for the exposure and expected-move fields.',
+    )
+    exposureV2: ExposureV2Stored | ExposureV2Unavailable | None = Field(
+        None, description='Methodology 2 beside the legacy fields, never inside them.'
     )
 
 
@@ -2192,14 +2744,14 @@ class ComputeConcurrencyLimitError(BaseModel):
     max: float = Field(..., examples=[2])
 
 
-class Scope(Enum):
+class Scope3(Enum):
     day = 'day'
 
 
 class CalibrationQuotaError(BaseModel):
     error: str = Field(..., examples=['Daily calibration quota exceeded'])
     code: str = Field(..., examples=['CALIBRATION_QUOTA_EXCEEDED'])
-    scope: Scope = Field(..., description='Which quota window was exceeded')
+    scope: Scope3 = Field(..., description='Which quota window was exceeded')
     limit: float = Field(..., description='Hard cap for the scope (500 per day)')
     used: float = Field(
         ...,
@@ -2317,6 +2869,109 @@ class BrokerError(BaseModel):
     )
 
 
+class RegimeExposureStrikeAvailability(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+    )
+    gamma: bool
+    delta: bool
+    vega: bool
+    higherOrder: bool
+
+
+class RegimeExposureStrike(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+    )
+    strike: float
+    callGamma: float
+    putGamma: float
+    netGamma: float
+    callDelta: float
+    putDelta: float
+    netDelta: float
+    callVega: float
+    putVega: float
+    netVega: float
+    callVanna: float
+    putVanna: float
+    netVanna: float
+    callCharm: float
+    putCharm: float
+    netCharm: float
+    callVomma: float
+    putVomma: float
+    netVomma: float
+    availability: RegimeExposureStrikeAvailability | None = None
+
+
+class RegimeExposureAvailability(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+    )
+    gammaRows: conint(ge=0)
+    deltaRows: conint(ge=0)
+    vegaRows: conint(ge=0)
+    higherOrderRows: conint(ge=0)
+
+
+class RegimeExposureV1(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+    )
+    spotPrice: float
+    netGamma: float
+    netDelta: float
+    netVega: float
+    netVanna: float
+    netCharm: float = Field(
+        ...,
+        description='Net dealer dollar charm per calendar day on the remaining-maturity sign for the dealer, the opposite of the time-passing `charm` of `/v1/compute/greeks`: one day of time passing moves the dollar delta of the dealers by minus `netCharm`.',
+    )
+    netVomma: float
+    callWall: float | None
+    putWall: float | None
+    gammaFlip: float | None
+    absGamma: float | None = Field(
+        None,
+        description='Strike with the largest absolute net gamma in the wall/flip universe',
+    )
+    gammaConcentration: float | None
+    regime: Regime
+    methodology: Literal[1] | None = Field(
+        None, description='Methodology 1 (legacy): walls, flip and regime.'
+    )
+    topStrikes: list[RegimeExposureStrike] = Field(
+        ..., description='Top-10 strikes by absolute net gamma'
+    )
+    availability: RegimeExposureAvailability | None = None
+
+
+class RegimeExposureMeta(BaseModel):
+    model_config = ConfigDict(
+        extra='allow',
+    )
+    gex: RegimeExposureV1 | None = None
+    gexV2: ExposureV2Block | None = None
+
+
+class ExposureResponseV2(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+    )
+    methodology: Literal[2]
+    methodologySource: MethodologySource = Field(
+        ...,
+        description="request: the methodology the request named. default: the service's central default, as read for this request.",
+    )
+    methodologyStale: Literal[True] | None = Field(
+        None,
+        description='Present only when the default could not be re-read and its last good value was used.',
+    )
+    exposureV2: ExposureV2Computed
+    resolved: ResolvedSummary | None = None
+
+
 class PriceResponse(BaseModel):
     model_config = ConfigDict(
         extra='ignore',
@@ -2348,6 +3003,15 @@ class PriceResponse(BaseModel):
     warnings: list[str] | None = Field(
         None,
         description='Non-fatal notices, including ticker-resolution warnings and disclosure that a requested numerical model used an analytical fallback.',
+    )
+
+
+class ExposureResponse(
+    RootModel[ExposureFullResult | ExposureSnapshot | ExposureResponseV2]
+):
+    root: ExposureFullResult | ExposureSnapshot | ExposureResponseV2 = Field(
+        ...,
+        description='Methodology 1: ExposureFullResult ({ snapshot, byStrike }) by default, ExposureSnapshot directly with ?detail=snapshot. Methodology 2: ExposureResponseV2 ({ methodology: 2, exposureV2 }).',
     )
 
 

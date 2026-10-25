@@ -13,6 +13,74 @@ out in this file with **Breaking** at the start of the bullet.
 
 ## [Unreleased]
 
+## [1.5.0] (2026-10-24)
+
+The API publishes a second Greek exposure methodology beside the legacy one.
+Methodology 1 (legacy) is the dealer-hedging convention with walls, the gamma
+flip and the regime. Methodology 2 is the assumed dealer book and Long OI over
+each side's bases, with their coverage, and no walls, flip or regime. The
+SDK's signatures are compatible: none loses or reorders a parameter, and
+every new parameter and every new field is optional. Every method keeps its
+return type; `ExposureResponse`'s union gains a branch that a call naming no
+methodology receives only once the service's default changes (see below).
+One API value changes on purpose: the regime rows'
+`vector._meta.gexV2.source` words (under Changed).
+
+### Added
+
+- `exposure(...)` takes `methodology` (`1` or `2`), `symbol` and `as_of`:
+  - an omitted `methodology` is the service's central default, and the
+    answer's `methodologySource` says `"default"`;
+  - `symbol` lets the API resolve a missing spot, rate or yield, and makes
+    methodology 2 price a forward-priced index (such as `"SPX"`) on each
+    expiration's forward, reading only the rate;
+  - `as_of` (ISO 8601) is the instant methodology 2's expiry scope is applied
+    at: a leg counts until its expiration session's close, 16:00 ET or 13:00
+    ET on an NYSE early close.
+- `exposure_eod(..., typed=True)` returns the `EodExposureResponse` model,
+  `exposureV2` included. The default stays the `dict` it has always returned.
+- Regenerated models for the current API contract:
+  - `ExposureResponse` is a flat union of `ExposureFullResult`,
+    `ExposureSnapshot` and the new `ExposureResponseV2`
+    (`.root.exposureV2`, an `ExposureV2Computed`). `.root.methodology` names
+    the branch: `Literal[1]` on the first two, `Literal[2]` on the third.
+    `.root.netGamma` and `.root.snapshot` work as before.
+  - `ExposureFullResult` and `ExposureSnapshot` gain the optional label:
+    `methodology`, `methodologySource`, and `methodologyStale` (sent only
+    when the default could not be re-read and its last good value was used).
+  - `SnapshotResponse.exposureV2` and `EodExposureResponse.exposureV2` hold
+    methodology 2 for the stored end-of-day book, beside the legacy fields
+    (now described as methodology 1). Each is an `ExposureV2Stored` (with its
+    provenance, its definition and its expiry qualifier) or an
+    `ExposureV2Unavailable` with a reason, never methodology 1's numbers.
+    The newest date carries per-strike views where its curve is from the same
+    run.
+  - `RegimeExposureMeta`, `RegimeExposureV1`, `RegimeExposureStrike` and
+    `RegimeExposureAvailability` document a regime row's `vector._meta`: its
+    `gex` (methodology 1) and `gexV2` (methodology 2) blocks. The regime
+    methods still return their rows as `dict`s, so validate
+    `row["vector"]["_meta"]` yourself if you want the model.
+
+### Changed
+
+- The `exposure()` docstring no longer says the server defaults the rate to
+  0.05 and the yield to 0. It never assumes spot, rate or yield: each is
+  required unless `symbol` lets the API resolve it, and a missing one is a 422
+  naming it. `spot_price` is optional, so a call that sends `symbol` can leave
+  it out.
+- API: a regime row's `vector._meta.gexV2.source` now reads
+  `"eod_options_chain"` (a daily row) or `"intraday_options_chain"` (an
+  intraday row), the words the other endpoints use, in place of internal
+  storage names.
+- API: the WebSocket stream's exposure channel takes
+  `exposureOptions.methodology` per subscription (protocol version 1.1). See
+  the streaming documentation.
+
+When the service's default methodology changes, the change will be announced.
+An `exposure()` call without `methodology` will then return
+`ExposureResponseV2`. Pass `methodology=1` to keep the legacy shapes across
+that change.
+
 ## [1.4.0] (2026-10-22)
 
 The API's model corrections live by 2026-10-22 move many prices and Greeks.

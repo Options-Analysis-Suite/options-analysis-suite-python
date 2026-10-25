@@ -4,7 +4,7 @@
   "info": {
     "title": "Options Analysis Suite API",
     "version": "1.0.0",
-    "description": "Institutional-grade options analytics API. Programmatic access to 17 pricing models (including 7 exotic options), auto-calibration, real-time exposure analytics, WebSocket streaming, and pre-computed market data.\n\n## Features\n\n- **17 pricing models** — 10 standard (Black-Scholes, Heston, SABR, FFT (Carr-Madan with 6 characteristic functions), Variance Gamma, Jump Diffusion (Kou/Bates/Merton), Binomial, PDE, Monte Carlo, Local Volatility (Dupire + eSSVI)) plus 7 exotic (Barrier, Asian, Lookback, Digital, Compound, Chooser, Multi-Asset) with optional strategy-insight card via `includeInsight`\n- **Auto-calibration** — Heston, SABR, VG, JD, and Local Vol calibrate against live broker chain data in 0.25-16s\n- **Greek exposure** — GEX, DEX, VEX, Vanna, Charm, Vomma with gamma flip detection, call/put walls, abs gamma anchor, dealer positioning regime\n- **Real-time streaming** — WebSocket endpoint for live quotes, Greeks, and computed exposure snapshots\n- **Pre-computed data** — market regime, IV surfaces, snapshots, metrics, scanner, risk-neutral + lognormal probability distributions\n\n## Authentication\n\nAll `/v1/*` endpoints require an API key. Pass it via either header:\n\n- `Authorization: Bearer oas_live_...`\n- `X-API-Key: oas_live_...`\n\n## Rate limits\n\nSeparate buckets for data and compute endpoints (per user, shared across all API keys):\n\n- **Data** (`/v1/data/*`): **120 requests/minute**\n- **Compute** (`/v1/compute/*`): **120 requests/minute**\n- **Cheap compute**: max **6 concurrent** - `/price` and `/greeks` on BS, binomial, and the barrier, digital, compound and chooser models unless `modelParams.method` is `mc` / `montecarlo`; continuous lookback, one or two discrete fixings and the larger-than-2520-fixing lookback approximation unless Monte Carlo; exposure, max pain, expected move, and probability in `simple` mode\n- **Heavy compute**: max **2 concurrent** - `/price` and `/greeks` on MC, PDE, Heston, Local Vol, SABR, JD, VG, FFT, Asian and Multi-Asset; discrete lookback with 3..2520 future fixings; and on any exotic model whose `modelParams.method` is `mc` / `montecarlo`; every scenario, sensitivity and strategy request; probability in `full` mode\n- **Per-request computation**: a binomial, Heston or Local Vol request whose work would pass one request's allowance is refused before that work runs, with **422** `COMPUTE_BUDGET_EXCEEDED` (see the `modelParams` notes on `/v1/compute/price`)\n- **Calibration**: max **1 concurrent** job (own lane, separate from compute pools) · hard-capped at **500/day** per user\n- Heavy compute endpoints may return **503** when worker capacity is unavailable\n- 429 responses include `X-RateLimit-Bucket` header (`data` or `compute`)\n\n## Broker credentials (BYOK)\n\nSome endpoints (calibration, full-mode probability, streaming) require live broker chain data. The API doesn't pay for market data; you supply your own credentials via request headers (the streaming endpoint takes them in its initial WebSocket auth message instead):\n\n- **TastyTrade**: `X-Broker-Type: tastytrade`, `X-Tastytrade-Refresh-Token`, `X-Tastytrade-Client-Secret`\n- **Tradier**: `X-Broker-Type: tradier`, `X-Tradier-Key`\n- **Schwab**: `X-Broker-Type: schwab`, `X-Schwab-Refresh-Token`, `X-Schwab-Client-Id`, `X-Schwab-Client-Secret` (calibration, full-mode probability, and streaming; streaming additionally requires a Schwab app approved for Accounts and Trading)\n- **moomoo**: `X-Broker-Type: moomoo`, `X-Moomoo-Sealed-Token` (the API token from the moomoo card on your Account page: moomoo's read-only sign-in, sealed to your account, so it works only with API keys on the account that connected moomoo; streaming takes it as `credentials.moomooSealedToken` and carries quotes, not Greeks)\n\nNote: Public.com is **not accepted as a per-request header credential** on these endpoints, and no `/v1` endpoint reads a stored credential. A broker credential stored against your account is read by the platform's live-data routes, which sit outside `/v1` and are not part of this contract or its SDK; they are what the MCP server's live tools (`get_live_options_chain`, `get_live_dealer_positioning` and the other live tools) call. Storage is an opt-in on the account page for the Pro tier and above, and is offered for Tradier, tastytrade, Schwab, Public.com and moomoo. Public.com is also available for direct in-browser use on the Pro webapp tier.\n\n## Best practices (especially for LLM-driven agents)\n\n- **Calibrate once, then persist the fitted params — not the `calibrationId`.** `calibrationId` is a short-lived handle into a 30-second in-memory cache; it works for immediate follow-up `/price` and `/greeks` calls but is not durable. For reuse beyond 30s, save the fitted parameters from the calibration response and pass them as `modelParams` on subsequent calls. Either path avoids the 500/day calibration quota. Don't set `resolve.calibration: true` on every repeated call for the same symbol.\n- **Prefer `/v1/data/*` over recomputing.** Greeks history, IV surfaces, snapshot metrics, metrics-batch, scanner rankings, and regime classifications are precomputed or cached where available — typically much faster than recomputing from scratch. Don't loop `/v1/compute/greeks` to reconstruct what `/v1/data/greeks-history/:symbol` already returns.\n- **Use batch endpoints.** `/v1/data/metrics/batch` takes multiple symbols in one call; MultiAsset accepts `modelParams.tickers` for basket pricing. One batch call beats a loop of N single-symbol calls.\n- **Use canonical ticker symbols.** Symbols may contain letters, numbers, dot, dash, or slash (examples: `SPY`, `BRK.B`, `BRK-B`, `/ES`). Space-separated class shares such as `BRK B` are rejected; use dot or dash form instead.\n- **Use ticker auto-fill instead of fabricated numerics.** Pass `symbol` + `expiry` and let the API resolve `S`, `sigma`, `r`, `t` from cached market data — the response's `resolved` block shows which source filled each field (`snapshot`, `atmIv-expiry`, `hv-20d`, `fred-DGS3MO`, …). Don't hallucinate market values from training data.\n- **Always inspect `warnings` and `resolved`.** The compute route returns top-level `warnings` plus a `resolved` block whenever ticker auto-fill ran. Agents that ignore these can act on a price computed with a stale spot or a missing-dividend fallback.\n- **Honor `Retry-After` on 429.** Sleep the suggested duration. Retrying instantly in a tight loop wastes tokens and bounces off the same limit.\n- **Use `X-Cache-Status` to guide polling cadence.** Data responses include `X-Cache-Status`; values include `HIT`, `MISS`, `DEDUP`, `NO_REDIS`, and error/fallback statuses. If you see all HITs, you're polling faster than the underlying data updates — back off.\n- **Don't repoll faster than the underlying data updates.** Most `/v1/data/*` endpoints back tables that refresh on a documented daily cron. Repolling every 30s returns the same bytes.\n- **Stream live data over `/v1/ws`, don't poll REST.** Up to 30 msg/sec × 50 symbols × 5 sessions beats any REST polling loop on freshness and rpm budget.\n- **Match model to task.** Black-Scholes and Binomial are correct for vanilla options. Black-Scholes answers in well under a millisecond. Binomial without a discrete-dividend schedule answers in milliseconds at its default 200 steps, but its work grows with the square of `steps` and `/v1/compute/greeks` prices dozens of trees, so at 2000 steps a Greeks request takes under a second. A discrete-dividend schedule adds work (up to a few seconds), and on `CRR` and `JR` it adds trees, enough for a 422 `COMPUTE_BUDGET_EXCEEDED` at modest step counts (see the binomial notes on `/v1/compute/price`). Raise `steps` only as far as the accuracy you need. Reserve Heston/SABR/Local Vol/JD/MC for cases where skew, jumps, or path-dependence actually matter.\n- **Scope and secure keys.** Create compute-only, data-only, or streaming-only keys to limit blast radius. Never embed keys in client-side JS, browser extensions, public repos, or LLM tool manifests.",
+    "description": "Institutional-grade options analytics API. Programmatic access to 17 pricing models (including 7 exotic options), auto-calibration, real-time exposure analytics, WebSocket streaming, and pre-computed market data.\n\n## Features\n\n- **17 pricing models** — 10 standard (Black-Scholes, Heston, SABR, FFT (Carr-Madan with 6 characteristic functions), Variance Gamma, Jump Diffusion (Kou/Bates/Merton), Binomial, PDE, Monte Carlo, Local Volatility (Dupire + eSSVI)) plus 7 exotic (Barrier, Asian, Lookback, Digital, Compound, Chooser, Multi-Asset) with optional strategy-insight card via `includeInsight`\n- **Auto-calibration** — Heston, SABR, VG, JD, and Local Vol calibrate against live broker chain data in 0.25-16s\n- **Greek exposure** — GEX, DEX, VEX, Vanna, Charm, Vomma under two methodologies: 1 (legacy) with gamma flip detection, call/put walls, abs gamma anchor and dealer positioning regime; 2, the assumed dealer book and Long OI over each side's bases with their coverage, served as `exposureV2` beside the legacy fields on the snapshot and end-of-day exposure endpoints, chosen per request on `/v1/compute/exposure` and per subscription on the stream\n- **Real-time streaming** — WebSocket endpoint for live quotes, Greeks, and computed exposure snapshots\n- **Pre-computed data** — market regime, IV surfaces, snapshots, metrics, scanner, risk-neutral + lognormal probability distributions\n\n## Authentication\n\nAll `/v1/*` endpoints require an API key. Pass it via either header:\n\n- `Authorization: Bearer oas_live_...`\n- `X-API-Key: oas_live_...`\n\n## Rate limits\n\nSeparate buckets for data and compute endpoints (per user, shared across all API keys):\n\n- **Data** (`/v1/data/*`): **120 requests/minute**\n- **Compute** (`/v1/compute/*`): **120 requests/minute**\n- **Cheap compute**: max **6 concurrent** - `/price` and `/greeks` on BS, binomial, and the barrier, digital, compound and chooser models unless `modelParams.method` is `mc` / `montecarlo`; continuous lookback, one or two discrete fixings and the larger-than-2520-fixing lookback approximation unless Monte Carlo; exposure, max pain, expected move, and probability in `simple` mode\n- **Heavy compute**: max **2 concurrent** - `/price` and `/greeks` on MC, PDE, Heston, Local Vol, SABR, JD, VG, FFT, Asian and Multi-Asset; discrete lookback with 3..2520 future fixings; and on any exotic model whose `modelParams.method` is `mc` / `montecarlo`; every scenario, sensitivity and strategy request; probability in `full` mode\n- **Per-request computation**: a binomial, Heston or Local Vol request whose work would pass one request's allowance is refused before that work runs, with **422** `COMPUTE_BUDGET_EXCEEDED` (see the `modelParams` notes on `/v1/compute/price`)\n- **Calibration**: max **1 concurrent** job (own lane, separate from compute pools) · hard-capped at **500/day** per user\n- Heavy compute endpoints may return **503** when worker capacity is unavailable\n- 429 responses include `X-RateLimit-Bucket` header (`data` or `compute`)\n\n## Broker credentials (BYOK)\n\nSome endpoints (calibration, full-mode probability, streaming) require live broker chain data. The API doesn't pay for market data; you supply your own credentials via request headers (the streaming endpoint takes them in its initial WebSocket auth message instead):\n\n- **TastyTrade**: `X-Broker-Type: tastytrade`, `X-Tastytrade-Refresh-Token`, `X-Tastytrade-Client-Secret`\n- **Tradier**: `X-Broker-Type: tradier`, `X-Tradier-Key`\n- **Schwab**: `X-Broker-Type: schwab`, `X-Schwab-Refresh-Token`, `X-Schwab-Client-Id`, `X-Schwab-Client-Secret` (calibration, full-mode probability, and streaming; streaming additionally requires a Schwab app approved for Accounts and Trading)\n- **moomoo**: `X-Broker-Type: moomoo`, `X-Moomoo-Sealed-Token` (the API token from the moomoo card on your Account page: moomoo's read-only sign-in, sealed to your account, so it works only with API keys on the account that connected moomoo; streaming takes it as `credentials.moomooSealedToken` and carries quotes, not Greeks)\n\nNote: Public.com is **not accepted as a per-request header credential** on these endpoints, and no `/v1` endpoint reads a stored credential. A broker credential stored against your account is read by the platform's live-data routes, which sit outside `/v1` and are not part of this contract or its SDK; they are what the MCP server's live tools (`get_live_options_chain`, `get_live_dealer_positioning` and the other live tools) call. Storage is an opt-in on the account page for the Pro tier and above, and is offered for Tradier, tastytrade, Schwab, Public.com and moomoo. Public.com is also available for direct in-browser use on the Pro webapp tier.\n\n## Best practices (especially for LLM-driven agents)\n\n- **Calibrate once, then persist the fitted params — not the `calibrationId`.** `calibrationId` is a short-lived handle into a 30-second in-memory cache; it works for immediate follow-up `/price` and `/greeks` calls but is not durable. For reuse beyond 30s, save the fitted parameters from the calibration response and pass them as `modelParams` on subsequent calls. Either path avoids the 500/day calibration quota. Don't set `resolve.calibration: true` on every repeated call for the same symbol.\n- **Prefer `/v1/data/*` over recomputing.** Greeks history, IV surfaces, snapshot metrics, metrics-batch, scanner rankings, and regime classifications are precomputed or cached where available — typically much faster than recomputing from scratch. Don't loop `/v1/compute/greeks` to reconstruct what `/v1/data/greeks-history/:symbol` already returns.\n- **Use batch endpoints.** `/v1/data/metrics/batch` takes multiple symbols in one call; MultiAsset accepts `modelParams.tickers` for basket pricing. One batch call beats a loop of N single-symbol calls.\n- **Use canonical ticker symbols.** Symbols may contain letters, numbers, dot, dash, or slash (examples: `SPY`, `BRK.B`, `BRK-B`, `/ES`). Space-separated class shares such as `BRK B` are rejected; use dot or dash form instead.\n- **Use ticker auto-fill instead of fabricated numerics.** Pass `symbol` + `expiry` and let the API resolve `S`, `sigma`, `r`, `t` from cached market data — the response's `resolved` block shows which source filled each field (`snapshot`, `atmIv-expiry`, `hv-20d`, `fred-DGS3MO`, …). Don't hallucinate market values from training data.\n- **Always inspect `warnings` and `resolved`.** The compute route returns top-level `warnings` plus a `resolved` block whenever ticker auto-fill ran. Agents that ignore these can act on a price computed with a stale spot or a missing-dividend fallback.\n- **Honor `Retry-After` on 429.** Sleep the suggested duration. Retrying instantly in a tight loop wastes tokens and bounces off the same limit.\n- **Use `X-Cache-Status` to guide polling cadence.** Data responses include `X-Cache-Status`; values include `HIT`, `MISS`, `DEDUP`, `NO_REDIS`, and error/fallback statuses. If you see all HITs, you're polling faster than the underlying data updates — back off.\n- **Don't repoll faster than the underlying data updates.** Most `/v1/data/*` endpoints back tables that refresh on a documented daily cron. Repolling every 30s returns the same bytes.\n- **Stream live data over `/v1/ws`, don't poll REST.** Up to 30 msg/sec × 50 symbols × 5 sessions beats any REST polling loop on freshness and rpm budget.\n- **Match model to task.** Black-Scholes and Binomial are correct for vanilla options. Black-Scholes answers in well under a millisecond. Binomial without a discrete-dividend schedule answers in milliseconds at its default 200 steps, but its work grows with the square of `steps` and `/v1/compute/greeks` prices dozens of trees, so at 2000 steps a Greeks request takes under a second. A discrete-dividend schedule adds work (up to a few seconds), and on `CRR` and `JR` it adds trees, enough for a 422 `COMPUTE_BUDGET_EXCEEDED` at modest step counts (see the binomial notes on `/v1/compute/price`). Raise `steps` only as far as the accuracy you need. Reserve Heston/SABR/Local Vol/JD/MC for cases where skew, jumps, or path-dependence actually matter.\n- **Scope and secure keys.** Create compute-only, data-only, or streaming-only keys to limit blast radius. Never embed keys in client-side JS, browser extensions, public repos, or LLM tool manifests.",
     "contact": {
       "name": "Options Analysis Suite",
       "url": "https://optionsanalysissuite.com"
@@ -619,7 +619,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "description": "Service unavailable — worker pool draining, broker connection failed, a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields), or the default exposure methodology could not be read for a request that named none (DEFAULT_METHODOLOGY_UNAVAILABLE, retryable)",
             "content": {
               "application/json": {
                 "schema": {
@@ -1368,7 +1368,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "description": "Service unavailable — worker pool draining, broker connection failed, a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields), or the default exposure methodology could not be read for a request that named none (DEFAULT_METHODOLOGY_UNAVAILABLE, retryable)",
             "content": {
               "application/json": {
                 "schema": {
@@ -1384,7 +1384,7 @@
       "post": {
         "operationId": "compute.exposure",
         "summary": "Greek exposure snapshot (GEX/DEX/VEX/Vanna/Charm/Vomma)",
-        "description": "Compute full Greek exposure from a strike list: net gamma/delta/vega/vanna/charm/vomma, call/put walls, gamma flip, abs gamma anchor, dealer positioning regime, and per-strike top contributors. Default response is the full result `{ snapshot, byStrike }`; pass `?detail=snapshot` to receive only the compact `ExposureSnapshot` directly.",
+        "description": "Compute Greek exposure from a strike list, by the methodology the request names (`methodology`), else the service's central default (1 until the cutover; the answer says which it used). Methodology 1 (legacy): net gamma/delta/vega/vanna/charm/vomma, call/put walls, gamma flip, abs gamma anchor, dealer positioning regime, and per-strike top contributors; the full result `{ snapshot, byStrike }` by default, the compact `ExposureSnapshot` with `?detail=snapshot`. Methodology 2: `{ methodology: 2, exposureV2 }`, the assumed dealer book and Long OI over the chain's per-side bases, with each strike's views unless `?detail=snapshot`; send `symbol` for an index so its rows price on their own forwards.",
         "tags": [
           "Compute"
         ],
@@ -1410,9 +1410,10 @@
                 "$ref": "#/components/schemas/ExposureRequest"
               },
               "examples": {
-                "example": {
-                  "summary": "GEX/DEX exposure snapshot",
+                "methodology1": {
+                  "summary": "Methodology 1 (legacy): GEX/DEX exposure with walls, flip and regime",
                   "value": {
+                    "methodology": 1,
                     "spotPrice": 655.89,
                     "riskFreeRate": 0.05,
                     "dividendYield": 0,
@@ -1442,6 +1443,43 @@
                       }
                     ]
                   }
+                },
+                "methodology2": {
+                  "summary": "Methodology 2: the assumed dealer book and Long OI over a submitted chain",
+                  "description": "The legs count until their expiration's session close as of `asOf`; each row carries its expir_date.",
+                  "value": {
+                    "methodology": 2,
+                    "asOf": "2026-04-28T15:00:00Z",
+                    "spotPrice": 655.89,
+                    "riskFreeRate": 0.0425,
+                    "dividendYield": 0.0125,
+                    "strikes": [
+                      {
+                        "strike_cents": 65000,
+                        "stk_px_cents": 65589,
+                        "c_oi": 12500,
+                        "p_oi": 8200,
+                        "gamma": 0.0192,
+                        "delta": 0.635,
+                        "vega": 0.408,
+                        "smooth_smv_vol": 0.18,
+                        "yte": 0.0274,
+                        "expir_date": "2026-05-08"
+                      },
+                      {
+                        "strike_cents": 66000,
+                        "stk_px_cents": 65589,
+                        "c_oi": 15800,
+                        "p_oi": 11200,
+                        "gamma": 0.0201,
+                        "delta": 0.434,
+                        "vega": 0.427,
+                        "smooth_smv_vol": 0.18,
+                        "yte": 0.0274,
+                        "expir_date": "2026-05-08"
+                      }
+                    ]
+                  }
                 }
               }
             }
@@ -1449,16 +1487,18 @@
         },
         "responses": {
           "200": {
-            "description": "Exposure result. By default an `ExposureFullResult` ({ snapshot, byStrike }); when `?detail=snapshot` is passed, an `ExposureSnapshot` directly.",
+            "description": "Exposure result. Methodology 1: an `ExposureFullResult` ({ snapshot, byStrike }) by default, an `ExposureSnapshot` directly with `?detail=snapshot`. Methodology 2: an `ExposureResponseV2`.",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ExposureResponse"
                 },
                 "examples": {
-                  "example": {
-                    "summary": "Default response: full result ({ snapshot, byStrike }). Pass ?detail=snapshot to receive only the inner snapshot directly.",
+                  "methodology1": {
+                    "summary": "Methodology 1 (legacy), the default detail: full result ({ snapshot, byStrike }). Pass ?detail=snapshot to receive only the inner snapshot directly.",
                     "value": {
+                      "methodology": 1,
+                      "methodologySource": "request",
                       "snapshot": {
                         "spotPrice": 655.89,
                         "netGamma": 12500000,
@@ -1520,6 +1560,210 @@
                           "netVomma": 11500
                         }
                       ]
+                    }
+                  },
+                  "methodology2": {
+                    "summary": "Methodology 2: the answer to that request, computed by the engine",
+                    "value": {
+                      "methodology": 2,
+                      "methodologySource": "request",
+                      "exposureV2": {
+                        "methodology": 2,
+                        "rollModel": "log-forward-theil-sen-v1",
+                        "units": {
+                          "gex": "USD of delta per 1% move",
+                          "vegaExposure": "USD per vol point",
+                          "vanna": "USD of delta per vol point",
+                          "charmFlow": "USD per calendar day",
+                          "vomma": "USD per (vol point)^2",
+                          "putMinusCallDeltaBalance": "USD, underlying-equivalent"
+                        },
+                        "source": "request",
+                        "asOf": "2026-04-28T15:00:00.000Z",
+                        "scope": {
+                          "expirations": "all"
+                        },
+                        "referenceKind": "spot",
+                        "charmTimeBasis": "calendar-day",
+                        "rollStatus": "notApplicable",
+                        "carry": null,
+                        "carryFit": null,
+                        "assumedDealerBook": {
+                          "gex": 75292149.95134202,
+                          "vegaExposure": 371860,
+                          "vanna": -558721.649239107,
+                          "charmFlow": 62661.8189420565,
+                          "vomma": 1420.563725494094
+                        },
+                        "longOi": {
+                          "gex": 404440417.4108939,
+                          "vegaExposure": 1997460,
+                          "vanna": -1319087.6383966664,
+                          "charmFlow": 2129093.344562541,
+                          "vomma": 7217.785113638916
+                        },
+                        "putMinusCallDeltaBalance": -358279912.49999994,
+                        "bases": {
+                          "call": {
+                            "gex": 239866283.68111798,
+                            "dex": 970369578.3,
+                            "vega": 1184660,
+                            "vanna": -938904.6438178867,
+                            "charmFixedRef": -1095877.5817522989,
+                            "rollBasis": null,
+                            "vomma": 4319.174419566505
+                          },
+                          "put": {
+                            "gex": 164574133.72977597,
+                            "dex": -612089665.8000001,
+                            "vega": 812800,
+                            "vanna": -380182.9945787797,
+                            "charmFixedRef": -1033215.7628102424,
+                            "rollBasis": null,
+                            "vomma": 2898.610694072411
+                          }
+                        },
+                        "coverage": {
+                          "gamma": {
+                            "included": 4,
+                            "total": 4,
+                            "status": "complete"
+                          },
+                          "delta": {
+                            "included": 4,
+                            "total": 4,
+                            "status": "complete"
+                          },
+                          "vega": {
+                            "included": 4,
+                            "total": 4,
+                            "status": "complete"
+                          },
+                          "vanna": {
+                            "included": 4,
+                            "total": 4,
+                            "status": "complete"
+                          },
+                          "charm": {
+                            "included": 4,
+                            "total": 4,
+                            "status": "complete"
+                          },
+                          "vomma": {
+                            "included": 4,
+                            "total": 4,
+                            "status": "complete"
+                          }
+                        },
+                        "expiryScope": "intraday-clock-1",
+                        "expiryCensus": {
+                          "inScope": 2,
+                          "expired": 0,
+                          "unscoped": 0
+                        },
+                        "byStrike": [
+                          {
+                            "strike": 650,
+                            "assumedDealerBook": {
+                              "gex": 35516626.099775985,
+                              "vegaExposure": 175439.99999999994,
+                              "vanna": -1857089.5588685,
+                              "charmFlow": -1403437.2103150617,
+                              "vomma": 1061.2863497167898
+                            },
+                            "longOi": {
+                              "gex": 170975386.10822397,
+                              "vegaExposure": 844560,
+                              "vanna": -8939942.760134406,
+                              "charmFlow": -6649031.911293033,
+                              "vomma": 5108.983125380826
+                            },
+                            "putMinusCallDeltaBalance": -324304810.5,
+                            "coverage": {
+                              "gamma": {
+                                "included": 2,
+                                "total": 2,
+                                "status": "complete"
+                              },
+                              "delta": {
+                                "included": 2,
+                                "total": 2,
+                                "status": "complete"
+                              },
+                              "vega": {
+                                "included": 2,
+                                "total": 2,
+                                "status": "complete"
+                              },
+                              "vanna": {
+                                "included": 2,
+                                "total": 2,
+                                "status": "complete"
+                              },
+                              "charm": {
+                                "included": 2,
+                                "total": 2,
+                                "status": "complete"
+                              },
+                              "vomma": {
+                                "included": 2,
+                                "total": 2,
+                                "status": "complete"
+                              }
+                            }
+                          },
+                          {
+                            "strike": 660,
+                            "assumedDealerBook": {
+                              "gex": 39775523.85156602,
+                              "vegaExposure": 196420,
+                              "vanna": 1298367.909629393,
+                              "charmFlow": 1466099.0292571182,
+                              "vomma": 359.2773757773043
+                            },
+                            "longOi": {
+                              "gex": 233465031.30267,
+                              "vegaExposure": 1152900,
+                              "vanna": 7620855.121737739,
+                              "charmFlow": 8778125.255855573,
+                              "vomma": 2108.8019882580907
+                            },
+                            "putMinusCallDeltaBalance": -33975101.99999994,
+                            "coverage": {
+                              "gamma": {
+                                "included": 2,
+                                "total": 2,
+                                "status": "complete"
+                              },
+                              "delta": {
+                                "included": 2,
+                                "total": 2,
+                                "status": "complete"
+                              },
+                              "vega": {
+                                "included": 2,
+                                "total": 2,
+                                "status": "complete"
+                              },
+                              "vanna": {
+                                "included": 2,
+                                "total": 2,
+                                "status": "complete"
+                              },
+                              "charm": {
+                                "included": 2,
+                                "total": 2,
+                                "status": "complete"
+                              },
+                              "vomma": {
+                                "included": 2,
+                                "total": 2,
+                                "status": "complete"
+                              }
+                            }
+                          }
+                        ]
+                      }
                     }
                   }
                 }
@@ -1616,7 +1860,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "description": "Service unavailable — worker pool draining, broker connection failed, a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields), or the default exposure methodology could not be read for a request that named none (DEFAULT_METHODOLOGY_UNAVAILABLE, retryable)",
             "content": {
               "application/json": {
                 "schema": {
@@ -1833,7 +2077,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "description": "Service unavailable — worker pool draining, broker connection failed, a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields), or the default exposure methodology could not be read for a request that named none (DEFAULT_METHODOLOGY_UNAVAILABLE, retryable)",
             "content": {
               "application/json": {
                 "schema": {
@@ -1998,7 +2242,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "description": "Service unavailable — worker pool draining, broker connection failed, a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields), or the default exposure methodology could not be read for a request that named none (DEFAULT_METHODOLOGY_UNAVAILABLE, retryable)",
             "content": {
               "application/json": {
                 "schema": {
@@ -2155,7 +2399,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "description": "Service unavailable — worker pool draining, broker connection failed, a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields), or the default exposure methodology could not be read for a request that named none (DEFAULT_METHODOLOGY_UNAVAILABLE, retryable)",
             "content": {
               "application/json": {
                 "schema": {
@@ -2320,7 +2564,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "description": "Service unavailable — worker pool draining, broker connection failed, a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields), or the default exposure methodology could not be read for a request that named none (DEFAULT_METHODOLOGY_UNAVAILABLE, retryable)",
             "content": {
               "application/json": {
                 "schema": {
@@ -2464,7 +2708,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "description": "Service unavailable — worker pool draining, broker connection failed, a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields), or the default exposure methodology could not be read for a request that named none (DEFAULT_METHODOLOGY_UNAVAILABLE, retryable)",
             "content": {
               "application/json": {
                 "schema": {
@@ -2743,7 +2987,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "description": "Service unavailable — worker pool draining, broker connection failed, a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields), or the default exposure methodology could not be read for a request that named none (DEFAULT_METHODOLOGY_UNAVAILABLE, retryable)",
             "content": {
               "application/json": {
                 "schema": {
@@ -3062,7 +3306,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "description": "Service unavailable — worker pool draining, broker connection failed, a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields), or the default exposure methodology could not be read for a request that named none (DEFAULT_METHODOLOGY_UNAVAILABLE, retryable)",
             "content": {
               "application/json": {
                 "schema": {
@@ -3164,7 +3408,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "description": "Service unavailable — worker pool draining, broker connection failed, a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields), or the default exposure methodology could not be read for a request that named none (DEFAULT_METHODOLOGY_UNAVAILABLE, retryable)",
             "content": {
               "application/json": {
                 "schema": {
@@ -3180,7 +3424,7 @@
       "get": {
         "operationId": "data.regime.bySymbol",
         "summary": "Regime history for a symbol",
-        "description": "Historical regime classifications for the given symbol.",
+        "description": "Historical regime classifications for the given symbol: the regime_daily rows, newest first. Each row's `vector._meta` carries its two Greek exposure blocks, `gex` (methodology 1) and `gexV2` (methodology 2) over the end-of-day chain: see the RegimeExposureMeta schema.",
         "tags": [
           "Data"
         ],
@@ -3288,7 +3532,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "description": "Service unavailable — worker pool draining, broker connection failed, a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields), or the default exposure methodology could not be read for a request that named none (DEFAULT_METHODOLOGY_UNAVAILABLE, retryable)",
             "content": {
               "application/json": {
                 "schema": {
@@ -3411,7 +3655,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "description": "Service unavailable — worker pool draining, broker connection failed, a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields), or the default exposure methodology could not be read for a request that named none (DEFAULT_METHODOLOGY_UNAVAILABLE, retryable)",
             "content": {
               "application/json": {
                 "schema": {
@@ -3427,7 +3671,7 @@
       "get": {
         "operationId": "data.regime.intraday",
         "summary": "Intraday regime snapshots",
-        "description": "Intraday regime detection snapshots for the symbol.",
+        "description": "Intraday regime detection snapshots for the symbol: the regime_intraday rows, newest first. Each row's `vector._meta` carries its two Greek exposure blocks, `gex` (methodology 1) and `gexV2` (methodology 2) over the intraday chain as of the scan: see the RegimeExposureMeta schema.",
         "tags": [
           "Data"
         ],
@@ -3534,7 +3778,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "description": "Service unavailable — worker pool draining, broker connection failed, a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields), or the default exposure methodology could not be read for a request that named none (DEFAULT_METHODOLOGY_UNAVAILABLE, retryable)",
             "content": {
               "application/json": {
                 "schema": {
@@ -3647,7 +3891,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "description": "Service unavailable — worker pool draining, broker connection failed, a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields), or the default exposure methodology could not be read for a request that named none (DEFAULT_METHODOLOGY_UNAVAILABLE, retryable)",
             "content": {
               "application/json": {
                 "schema": {
@@ -3688,7 +3932,7 @@
                 "examples": {
                   "example": {
                     "summary": "EOD snapshot for SPY with sampled curve rows",
-                    "description": "The curve arrays show sample rows from a larger snapshot. Their sums are not expected to equal the whole-snapshot netGex and netDex totals.",
+                    "description": "The curve arrays show sample rows from a larger snapshot. Their sums are not expected to equal the whole-snapshot netGex and netDex totals. `exposureV2` (methodology 2) is computed by the engine over a sample two-strike chain stored as a nightly publication, so it is not the chain the legacy sample fields describe.",
                     "value": {
                       "ticker": "SPY",
                       "date": "2026-04-25",
@@ -3845,7 +4089,203 @@
                         }
                       ],
                       "analyticsExpiry": "2026-05-23",
-                      "chainExpiry": "2026-05-23"
+                      "chainExpiry": "2026-05-23",
+                      "exposureV2": {
+                        "available": true,
+                        "methodology": 2,
+                        "rollModel": "log-forward-theil-sen-v1",
+                        "units": {
+                          "gex": "USD of delta per 1% move",
+                          "vegaExposure": "USD per vol point",
+                          "vanna": "USD of delta per vol point",
+                          "charmFlow": "USD per calendar day",
+                          "vomma": "USD per (vol point)^2",
+                          "putMinusCallDeltaBalance": "USD, underlying-equivalent"
+                        },
+                        "source": "eod_options_chain",
+                        "asOf": "2026-04-25",
+                        "scope": {
+                          "expirations": "all"
+                        },
+                        "referenceKind": "spot",
+                        "charmTimeBasis": "calendar-day",
+                        "rollStatus": "notApplicable",
+                        "carry": null,
+                        "carryFit": null,
+                        "assumedDealerBook": {
+                          "gex": 41715688.382936954,
+                          "vegaExposure": 676320,
+                          "vanna": 7237174.068745931,
+                          "charmFlow": 2338473.243339665,
+                          "vomma": -2125.374701369152
+                        },
+                        "longOi": {
+                          "gex": 386359460.591931,
+                          "vegaExposure": 6538720,
+                          "vanna": -13711030.90701431,
+                          "charmFlow": 606023.6706286669,
+                          "vomma": 18490.284702434335
+                        },
+                        "putMinusCallDeltaBalance": -453423315.90000015,
+                        "bases": {
+                          "call": {
+                            "gex": 214037574.48743397,
+                            "dex": 1604726709.6,
+                            "vega": 3607520,
+                            "vanna": -3236928.4191341894,
+                            "charmFixedRef": -1472248.4569841658,
+                            "rollBasis": null,
+                            "vomma": 8182.455000532593
+                          },
+                          "put": {
+                            "gex": 172321886.10449702,
+                            "dex": -1151303393.6999998,
+                            "vega": 2931200,
+                            "vanna": -10474102.48788012,
+                            "charmFixedRef": 866224.786355499,
+                            "rollBasis": null,
+                            "vomma": 10307.829701901745
+                          }
+                        },
+                        "coverage": {
+                          "gamma": {
+                            "included": 4,
+                            "total": 4,
+                            "status": "complete"
+                          },
+                          "delta": {
+                            "included": 4,
+                            "total": 4,
+                            "status": "complete"
+                          },
+                          "vega": {
+                            "included": 4,
+                            "total": 4,
+                            "status": "complete"
+                          },
+                          "vanna": {
+                            "included": 4,
+                            "total": 4,
+                            "status": "complete"
+                          },
+                          "charm": {
+                            "included": 4,
+                            "total": 4,
+                            "status": "complete"
+                          },
+                          "vomma": {
+                            "included": 4,
+                            "total": 4,
+                            "status": "complete"
+                          }
+                        },
+                        "expiryScope": "eod-session-1",
+                        "provenance": "nightly",
+                        "definition": "expiry-scoped",
+                        "expiryQualifier": null,
+                        "byStrike": [
+                          {
+                            "strike": 650,
+                            "assumedDealerBook": {
+                              "gex": -38235437.59384802,
+                              "vegaExposure": -654720,
+                              "vanna": 3597343.241250498,
+                              "charmFlow": 490277.183519671,
+                              "vomma": -2889.179591379808
+                            },
+                            "longOi": {
+                              "gex": 224198702.254836,
+                              "vegaExposure": 3839040,
+                              "vanna": -21093512.641877927,
+                              "charmFlow": -3204416.6956228046,
+                              "vomma": 16941.09851309069
+                            },
+                            "putMinusCallDeltaBalance": -2466146.4000000954,
+                            "coverage": {
+                              "gamma": {
+                                "included": 2,
+                                "total": 2,
+                                "status": "complete"
+                              },
+                              "delta": {
+                                "included": 2,
+                                "total": 2,
+                                "status": "complete"
+                              },
+                              "vega": {
+                                "included": 2,
+                                "total": 2,
+                                "status": "complete"
+                              },
+                              "vanna": {
+                                "included": 2,
+                                "total": 2,
+                                "status": "complete"
+                              },
+                              "charm": {
+                                "included": 2,
+                                "total": 2,
+                                "status": "complete"
+                              },
+                              "vomma": {
+                                "included": 2,
+                                "total": 2,
+                                "status": "complete"
+                              }
+                            }
+                          },
+                          {
+                            "strike": 660,
+                            "assumedDealerBook": {
+                              "gex": 79951125.97678497,
+                              "vegaExposure": 1331040,
+                              "vanna": 3639830.8274954315,
+                              "charmFlow": 1848196.0598199938,
+                              "vomma": 763.8048900106564
+                            },
+                            "longOi": {
+                              "gex": 162160758.337095,
+                              "vegaExposure": 2699680,
+                              "vanna": 7382481.7348636165,
+                              "charmFlow": 3810440.3662514715,
+                              "vomma": 1549.1861893436476
+                            },
+                            "putMinusCallDeltaBalance": -450957169.50000006,
+                            "coverage": {
+                              "gamma": {
+                                "included": 2,
+                                "total": 2,
+                                "status": "complete"
+                              },
+                              "delta": {
+                                "included": 2,
+                                "total": 2,
+                                "status": "complete"
+                              },
+                              "vega": {
+                                "included": 2,
+                                "total": 2,
+                                "status": "complete"
+                              },
+                              "vanna": {
+                                "included": 2,
+                                "total": 2,
+                                "status": "complete"
+                              },
+                              "charm": {
+                                "included": 2,
+                                "total": 2,
+                                "status": "complete"
+                              },
+                              "vomma": {
+                                "included": 2,
+                                "total": 2,
+                                "status": "complete"
+                              }
+                            }
+                          }
+                        ]
+                      }
                     }
                   }
                 }
@@ -3933,7 +4373,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "description": "Service unavailable — worker pool draining, broker connection failed, a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields), or the default exposure methodology could not be read for a request that named none (DEFAULT_METHODOLOGY_UNAVAILABLE, retryable)",
             "content": {
               "application/json": {
                 "schema": {
@@ -4092,7 +4532,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "description": "Service unavailable — worker pool draining, broker connection failed, a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields), or the default exposure methodology could not be read for a request that named none (DEFAULT_METHODOLOGY_UNAVAILABLE, retryable)",
             "content": {
               "application/json": {
                 "schema": {
@@ -4237,7 +4677,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "description": "Service unavailable — worker pool draining, broker connection failed, a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields), or the default exposure methodology could not be read for a request that named none (DEFAULT_METHODOLOGY_UNAVAILABLE, retryable)",
             "content": {
               "application/json": {
                 "schema": {
@@ -4392,7 +4832,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "description": "Service unavailable — worker pool draining, broker connection failed, a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields), or the default exposure methodology could not be read for a request that named none (DEFAULT_METHODOLOGY_UNAVAILABLE, retryable)",
             "content": {
               "application/json": {
                 "schema": {
@@ -4535,7 +4975,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "description": "Service unavailable — worker pool draining, broker connection failed, a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields), or the default exposure methodology could not be read for a request that named none (DEFAULT_METHODOLOGY_UNAVAILABLE, retryable)",
             "content": {
               "application/json": {
                 "schema": {
@@ -4597,6 +5037,7 @@
                 "examples": {
                   "example": {
                     "summary": "EOD dealer-positioning levels for TSLA (0-60 DTE)",
+                    "description": "`exposureV2` (methodology 2) is computed by the engine over a sample two-strike chain stored as a nightly publication, so it is not the chain the legacy sample fields describe.",
                     "value": {
                       "schemaVersion": 1,
                       "symbol": "TSLA",
@@ -4640,6 +5081,202 @@
                         "netGex": "dealer-perspective dollar delta change for a 1% spot move",
                         "netDex": "dealer-perspective dollar delta exposure",
                         "expectedMovePct30d": "decimal fraction"
+                      },
+                      "exposureV2": {
+                        "available": true,
+                        "methodology": 2,
+                        "rollModel": "log-forward-theil-sen-v1",
+                        "units": {
+                          "gex": "USD of delta per 1% move",
+                          "vegaExposure": "USD per vol point",
+                          "vanna": "USD of delta per vol point",
+                          "charmFlow": "USD per calendar day",
+                          "vomma": "USD per (vol point)^2",
+                          "putMinusCallDeltaBalance": "USD, underlying-equivalent"
+                        },
+                        "source": "eod_options_chain",
+                        "asOf": "2026-05-28",
+                        "scope": {
+                          "expirations": "all"
+                        },
+                        "referenceKind": "spot",
+                        "charmTimeBasis": "calendar-day",
+                        "rollStatus": "notApplicable",
+                        "carry": null,
+                        "carryFit": null,
+                        "assumedDealerBook": {
+                          "gex": 9844187.420250006,
+                          "vegaExposure": 368060,
+                          "vanna": 569894.9372410374,
+                          "charmFlow": 813674.2126219035,
+                          "vomma": -116.61387142108345
+                        },
+                        "longOi": {
+                          "gex": 66667602.63735,
+                          "vegaExposure": 2530860,
+                          "vanna": -316400.0732572712,
+                          "charmFlow": 371518.909282485,
+                          "vomma": 1152.9230643285541
+                        },
+                        "putMinusCallDeltaBalance": -278323167,
+                        "bases": {
+                          "call": {
+                            "gex": 38255895.0288,
+                            "dex": 666806130,
+                            "vega": 1449460,
+                            "vanna": 126747.43199188309,
+                            "charmFixedRef": -592596.5609521943,
+                            "rollBasis": null,
+                            "vomma": 518.1545964537354
+                          },
+                          "put": {
+                            "gex": 28411707.608549997,
+                            "dex": -388482963,
+                            "vega": 1081400,
+                            "vanna": -443147.5052491543,
+                            "charmFixedRef": 221077.65166970924,
+                            "rollBasis": null,
+                            "vomma": 634.7684678748188
+                          }
+                        },
+                        "coverage": {
+                          "gamma": {
+                            "included": 4,
+                            "total": 4,
+                            "status": "complete"
+                          },
+                          "delta": {
+                            "included": 4,
+                            "total": 4,
+                            "status": "complete"
+                          },
+                          "vega": {
+                            "included": 4,
+                            "total": 4,
+                            "status": "complete"
+                          },
+                          "vanna": {
+                            "included": 4,
+                            "total": 4,
+                            "status": "complete"
+                          },
+                          "charm": {
+                            "included": 4,
+                            "total": 4,
+                            "status": "complete"
+                          },
+                          "vomma": {
+                            "included": 4,
+                            "total": 4,
+                            "status": "complete"
+                          }
+                        },
+                        "expiryScope": "eod-session-1",
+                        "provenance": "nightly",
+                        "definition": "expiry-scoped",
+                        "expiryQualifier": null,
+                        "byStrike": [
+                          {
+                            "strike": 240,
+                            "assumedDealerBook": {
+                              "gex": -3257330.877899997,
+                              "vegaExposure": -124960.00000000006,
+                              "vanna": 157806.51425577945,
+                              "charmFlow": 157022.75007698266,
+                              "vomma": -122.55243072707759
+                            },
+                            "longOi": {
+                              "gex": 30204340.8678,
+                              "vegaExposure": 1158720,
+                              "vanna": -1463296.7685535913,
+                              "charmFlow": -1456029.1370774754,
+                              "vomma": 1136.3952667419924
+                            },
+                            "putMinusCallDeltaBalance": -87878508,
+                            "coverage": {
+                              "gamma": {
+                                "included": 2,
+                                "total": 2,
+                                "status": "complete"
+                              },
+                              "delta": {
+                                "included": 2,
+                                "total": 2,
+                                "status": "complete"
+                              },
+                              "vega": {
+                                "included": 2,
+                                "total": 2,
+                                "status": "complete"
+                              },
+                              "vanna": {
+                                "included": 2,
+                                "total": 2,
+                                "status": "complete"
+                              },
+                              "charm": {
+                                "included": 2,
+                                "total": 2,
+                                "status": "complete"
+                              },
+                              "vomma": {
+                                "included": 2,
+                                "total": 2,
+                                "status": "complete"
+                              }
+                            }
+                          },
+                          {
+                            "strike": 250,
+                            "assumedDealerBook": {
+                              "gex": 13101518.29815,
+                              "vegaExposure": 493020,
+                              "vanna": 412088.42298525793,
+                              "charmFlow": 656651.4625449209,
+                              "vomma": 5.938559305994146
+                            },
+                            "longOi": {
+                              "gex": 36463261.769549996,
+                              "vegaExposure": 1372140,
+                              "vanna": 1146896.6952963201,
+                              "charmFlow": 1827548.0463599605,
+                              "vomma": 16.52779758656202
+                            },
+                            "putMinusCallDeltaBalance": -190444659,
+                            "coverage": {
+                              "gamma": {
+                                "included": 2,
+                                "total": 2,
+                                "status": "complete"
+                              },
+                              "delta": {
+                                "included": 2,
+                                "total": 2,
+                                "status": "complete"
+                              },
+                              "vega": {
+                                "included": 2,
+                                "total": 2,
+                                "status": "complete"
+                              },
+                              "vanna": {
+                                "included": 2,
+                                "total": 2,
+                                "status": "complete"
+                              },
+                              "charm": {
+                                "included": 2,
+                                "total": 2,
+                                "status": "complete"
+                              },
+                              "vomma": {
+                                "included": 2,
+                                "total": 2,
+                                "status": "complete"
+                              }
+                            }
+                          }
+                        ]
                       }
                     }
                   }
@@ -4728,7 +5365,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "description": "Service unavailable — worker pool draining, broker connection failed, a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields), or the default exposure methodology could not be read for a request that named none (DEFAULT_METHODOLOGY_UNAVAILABLE, retryable)",
             "content": {
               "application/json": {
                 "schema": {
@@ -4861,7 +5498,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "description": "Service unavailable — worker pool draining, broker connection failed, a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields), or the default exposure methodology could not be read for a request that named none (DEFAULT_METHODOLOGY_UNAVAILABLE, retryable)",
             "content": {
               "application/json": {
                 "schema": {
@@ -5022,7 +5659,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "description": "Service unavailable — worker pool draining, broker connection failed, a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields), or the default exposure methodology could not be read for a request that named none (DEFAULT_METHODOLOGY_UNAVAILABLE, retryable)",
             "content": {
               "application/json": {
                 "schema": {
@@ -5178,7 +5815,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "description": "Service unavailable — worker pool draining, broker connection failed, a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields), or the default exposure methodology could not be read for a request that named none (DEFAULT_METHODOLOGY_UNAVAILABLE, retryable)",
             "content": {
               "application/json": {
                 "schema": {
@@ -5301,7 +5938,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "description": "Service unavailable — worker pool draining, broker connection failed, a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields), or the default exposure methodology could not be read for a request that named none (DEFAULT_METHODOLOGY_UNAVAILABLE, retryable)",
             "content": {
               "application/json": {
                 "schema": {
@@ -5424,7 +6061,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "description": "Service unavailable — worker pool draining, broker connection failed, a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields), or the default exposure methodology could not be read for a request that named none (DEFAULT_METHODOLOGY_UNAVAILABLE, retryable)",
             "content": {
               "application/json": {
                 "schema": {
@@ -5547,7 +6184,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "description": "Service unavailable — worker pool draining, broker connection failed, a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields), or the default exposure methodology could not be read for a request that named none (DEFAULT_METHODOLOGY_UNAVAILABLE, retryable)",
             "content": {
               "application/json": {
                 "schema": {
@@ -5690,7 +6327,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "description": "Service unavailable — worker pool draining, broker connection failed, a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields), or the default exposure methodology could not be read for a request that named none (DEFAULT_METHODOLOGY_UNAVAILABLE, retryable)",
             "content": {
               "application/json": {
                 "schema": {
@@ -5833,7 +6470,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "description": "Service unavailable — worker pool draining, broker connection failed, a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields), or the default exposure methodology could not be read for a request that named none (DEFAULT_METHODOLOGY_UNAVAILABLE, retryable)",
             "content": {
               "application/json": {
                 "schema": {
@@ -5994,7 +6631,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "description": "Service unavailable — worker pool draining, broker connection failed, a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields), or the default exposure methodology could not be read for a request that named none (DEFAULT_METHODOLOGY_UNAVAILABLE, retryable)",
             "content": {
               "application/json": {
                 "schema": {
@@ -6144,7 +6781,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "description": "Service unavailable — worker pool draining, broker connection failed, a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields), or the default exposure methodology could not be read for a request that named none (DEFAULT_METHODOLOGY_UNAVAILABLE, retryable)",
             "content": {
               "application/json": {
                 "schema": {
@@ -6289,7 +6926,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "description": "Service unavailable — worker pool draining, broker connection failed, a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields), or the default exposure methodology could not be read for a request that named none (DEFAULT_METHODOLOGY_UNAVAILABLE, retryable)",
             "content": {
               "application/json": {
                 "schema": {
@@ -6420,7 +7057,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "description": "Service unavailable — worker pool draining, broker connection failed, a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields), or the default exposure methodology could not be read for a request that named none (DEFAULT_METHODOLOGY_UNAVAILABLE, retryable)",
             "content": {
               "application/json": {
                 "schema": {
@@ -6542,7 +7179,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "description": "Service unavailable — worker pool draining, broker connection failed, a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields), or the default exposure methodology could not be read for a request that named none (DEFAULT_METHODOLOGY_UNAVAILABLE, retryable)",
             "content": {
               "application/json": {
                 "schema": {
@@ -6664,7 +7301,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "description": "Service unavailable — worker pool draining, broker connection failed, a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields), or the default exposure methodology could not be read for a request that named none (DEFAULT_METHODOLOGY_UNAVAILABLE, retryable)",
             "content": {
               "application/json": {
                 "schema": {
@@ -6786,7 +7423,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "description": "Service unavailable — worker pool draining, broker connection failed, a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields), or the default exposure methodology could not be read for a request that named none (DEFAULT_METHODOLOGY_UNAVAILABLE, retryable)",
             "content": {
               "application/json": {
                 "schema": {
@@ -6898,7 +7535,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "description": "Service unavailable — worker pool draining, broker connection failed, a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields), or the default exposure methodology could not be read for a request that named none (DEFAULT_METHODOLOGY_UNAVAILABLE, retryable)",
             "content": {
               "application/json": {
                 "schema": {
@@ -7010,7 +7647,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "description": "Service unavailable — worker pool draining, broker connection failed, a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields), or the default exposure methodology could not be read for a request that named none (DEFAULT_METHODOLOGY_UNAVAILABLE, retryable)",
             "content": {
               "application/json": {
                 "schema": {
@@ -7133,7 +7770,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "description": "Service unavailable — worker pool draining, broker connection failed, a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields), or the default exposure methodology could not be read for a request that named none (DEFAULT_METHODOLOGY_UNAVAILABLE, retryable)",
             "content": {
               "application/json": {
                 "schema": {
@@ -7256,7 +7893,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "description": "Service unavailable — worker pool draining, broker connection failed, a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields), or the default exposure methodology could not be read for a request that named none (DEFAULT_METHODOLOGY_UNAVAILABLE, retryable)",
             "content": {
               "application/json": {
                 "schema": {
@@ -7658,7 +8295,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "description": "Service unavailable — worker pool draining, broker connection failed, a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields), or the default exposure methodology could not be read for a request that named none (DEFAULT_METHODOLOGY_UNAVAILABLE, retryable)",
             "content": {
               "application/json": {
                 "schema": {
@@ -7781,7 +8418,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "description": "Service unavailable — worker pool draining, broker connection failed, a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields), or the default exposure methodology could not be read for a request that named none (DEFAULT_METHODOLOGY_UNAVAILABLE, retryable)",
             "content": {
               "application/json": {
                 "schema": {
@@ -7904,7 +8541,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "description": "Service unavailable — worker pool draining, broker connection failed, a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields), or the default exposure methodology could not be read for a request that named none (DEFAULT_METHODOLOGY_UNAVAILABLE, retryable)",
             "content": {
               "application/json": {
                 "schema": {
@@ -8027,7 +8664,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "description": "Service unavailable — worker pool draining, broker connection failed, a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields), or the default exposure methodology could not be read for a request that named none (DEFAULT_METHODOLOGY_UNAVAILABLE, retryable)",
             "content": {
               "application/json": {
                 "schema": {
@@ -8162,7 +8799,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "description": "Service unavailable — worker pool draining, broker connection failed, a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields), or the default exposure methodology could not be read for a request that named none (DEFAULT_METHODOLOGY_UNAVAILABLE, retryable)",
             "content": {
               "application/json": {
                 "schema": {
@@ -8315,7 +8952,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "description": "Service unavailable — worker pool draining, broker connection failed, a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields), or the default exposure methodology could not be read for a request that named none (DEFAULT_METHODOLOGY_UNAVAILABLE, retryable)",
             "content": {
               "application/json": {
                 "schema": {
@@ -8449,7 +9086,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "description": "Service unavailable — worker pool draining, broker connection failed, a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields), or the default exposure methodology could not be read for a request that named none (DEFAULT_METHODOLOGY_UNAVAILABLE, retryable)",
             "content": {
               "application/json": {
                 "schema": {
@@ -8573,7 +9210,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "description": "Service unavailable — worker pool draining, broker connection failed, a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields), or the default exposure methodology could not be read for a request that named none (DEFAULT_METHODOLOGY_UNAVAILABLE, retryable)",
             "content": {
               "application/json": {
                 "schema": {
@@ -8706,7 +9343,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "description": "Service unavailable — worker pool draining, broker connection failed, a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields), or the default exposure methodology could not be read for a request that named none (DEFAULT_METHODOLOGY_UNAVAILABLE, retryable)",
             "content": {
               "application/json": {
                 "schema": {
@@ -8821,7 +9458,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "description": "Service unavailable — worker pool draining, broker connection failed, a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields), or the default exposure methodology could not be read for a request that named none (DEFAULT_METHODOLOGY_UNAVAILABLE, retryable)",
             "content": {
               "application/json": {
                 "schema": {
@@ -8936,7 +9573,7 @@
             }
           },
           "503": {
-            "description": "Service unavailable — worker pool draining, broker connection failed, or a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields)",
+            "description": "Service unavailable — worker pool draining, broker connection failed, a market input's stored data could not be read (UPSTREAM_UNAVAILABLE, retryable, naming it in unreadFields), or the default exposure methodology could not be read for a request that named none (DEFAULT_METHODOLOGY_UNAVAILABLE, retryable)",
             "content": {
               "application/json": {
                 "schema": {
@@ -8952,7 +9589,7 @@
       "get": {
         "operationId": "streaming.websocket",
         "summary": "Real-time streaming WebSocket",
-        "description": "Upgrade to a WebSocket connection for real-time market data streaming. Supports three channels:\n\n- **quotes**: live bid/ask/price/volume for underlyings and options\n- **greeks**: live delta/gamma/theta/vega/rho/IV for options\n- **exposure**: computed GEX/DEX/VEX/Vanna/Charm/Vomma snapshots, pushed on significant price ticks\n\n**BYOK broker credentials** are sent via the initial `auth` message. Supported brokers: `tastytrade`, `tradier`, `schwab`, `moomoo` (Public.com is not supported - no streaming API). moomoo authenticates with `credentials.moomooSealedToken` (the API token from the moomoo card on your Account page) and streams quotes and trades, not Greeks; a symbol moomoo refuses (no real-time permission on your account) is named in an `error` event's `symbols`. Schwab streaming additionally requires the per-user app to be approved for **Accounts and Trading**; a market-data-only Schwab app receives an `auth_result` failure with an actionable message (its REST calibration still works).\n\n**Wire protocol:** JSON messages with discriminated `type` field. See the [Streaming Documentation](/docs/streaming) for the full protocol reference.\n\n**Inbound rate limit.** Frames you SEND are token-bucketed per session. Before the API key has been validated the allowance is a conservative floor (5/s, burst 10); before `welcome`, once the key is known, it is raised to your tier's `maxMessagesPerSecondPerWsSession`, carrying the current fill over rather than resetting. An over-rate frame is DROPPED, not queued, and does not reset the idle timer; you get an `error: INBOUND_RATE_LIMIT` notice at most once per second, and a session that keeps exceeding it is closed with 4429.\n\n**Rate shaping is announced.** When outbound data events exceed your per-session cap they are dropped, and the session now emits a `rate_shaped` control event (`droppedMessages`, `maxMessagesPerSecond`) at most once per second. Previously a shaped stream was indistinguishable from a quiet market. Control events are exempt from the cap, including this one.\n\n**Idle means no subscriptions, not no traffic.** A session holding at least one subscription is never closed for inactivity, however long it stays silent; consuming a stream is the point. A session holding nothing is closed after 30 minutes.\n\n**Channel scopes.** The `exposure` channel runs the same computation as `/v1/compute/exposure` and therefore requires the `compute` scope in addition to `streaming`. Enforcement is staged: it currently logs rather than refusing, and when enabled a subscribe that includes an unscoped channel is rejected in full with `error: CHANNEL_SCOPE_REQUIRED` (non-fatal: the session stays usable for the channels your key does cover). On each successful 60s re-authorization the live scope set is replaced; with enforcement enabled, an active channel whose scope was revoked is unsubscribed then. A database failure can delay that decision up to the separately documented 10-minute unverified ceiling.\n\n**Connection lifecycle:** the server's setup (API-key check, tier + `streaming` scope gates, concurrency-slot acquisition) is asynchronous, and broker authentication (Tradier/DXLink/Schwab/moomoo handshake) is asynchronous again. Protocol order: `welcome` → `auth` → `auth_result` → `subscribe`. Early frames that arrive before `welcome` are buffered (up to 16) and drained once the session is wired, so sending `auth` in `onopen` works in practice — but the buffer protects only the transport race; protocol ordering still applies, so don't pre-queue `subscribe` before `auth_result`. Racing past the buffer cap returns `error: PRE_WELCOME_BUFFER_FULL`.\n\n**Quick example:**\n```\nwscat -c wss://data.optionsanalysissuite.com/v1/ws?apiKey=oas_live_...\n\n< {\"type\":\"welcome\",\"sessionId\":\"ws_...\",\"serverTime\":...,\"version\":\"1.0\"}\n> {\"type\":\"auth\",\"broker\":\"tastytrade\",\"credentials\":{\"tastytradeRefreshToken\":\"...\",\"tastytradeClientSecret\":\"...\"}}\n< {\"type\":\"connection\",\"status\":\"connecting\",\"broker\":\"tastytrade\"}\n< {\"type\":\"connection\",\"status\":\"connected\",\"broker\":\"tastytrade\"}\n< {\"type\":\"auth_result\",\"success\":true,\"broker\":\"tastytrade\"}\n> {\"type\":\"subscribe\",\"channels\":[\"quotes\",\"greeks\",\"exposure\"],\"symbols\":[\"SPY\"]}\n< {\"type\":\"subscribed\",\"channels\":[\"quotes\",\"greeks\",\"exposure\"],\"symbols\":[\"SPY\"]}\n< {\"type\":\"quote\",\"symbol\":\"SPY\",\"bid\":655.61,\"ask\":656.41,...}\n```\n\n**Session auth**: API key required via `apiKey` query param, `Authorization: Bearer`, or `X-API-Key`.\n",
+        "description": "Upgrade to a WebSocket connection for real-time market data streaming. Supports three channels:\n\n- **quotes**: live bid/ask/price/volume for underlyings and options\n- **greeks**: live delta/gamma/theta/vega/rho/IV for options\n- **exposure**: computed GEX/DEX/VEX/Vanna/Charm/Vomma snapshots, pushed on significant price ticks\n\n**Exposure methodology (protocol 1.1).** A subscribe names `exposureOptions.methodology` (1, legacy: walls, flip and regime; or 2: the assumed dealer book, the long open interest and the put-minus-call delta balance), else takes the default methodology as of that subscribe and keeps it: a later change of the default never changes a live subscription. The `subscribed` reply names it (`methodology`, `methodologySource` request | default, `methodologyStale` when the default's last good value was used), and every `exposure` event carries it; a methodology 2 event's `exposureV2` is the `ExposureV2Computed` block, every leg on the tick's price. Methodology 2 never assumes `riskFreeRate` or `dividendYield`: without them its vanna, charm flow and vomma are unavailable. A subscribe that names none while the default cannot be read is refused in full with `error: DEFAULT_METHODOLOGY_UNAVAILABLE` and `retryAfter` seconds.\n\n**BYOK broker credentials** are sent via the initial `auth` message. Supported brokers: `tastytrade`, `tradier`, `schwab`, `moomoo` (Public.com is not supported - no streaming API). moomoo authenticates with `credentials.moomooSealedToken` (the API token from the moomoo card on your Account page) and streams quotes and trades, not Greeks; a symbol moomoo refuses (no real-time permission on your account) is named in an `error` event's `symbols`. Schwab streaming additionally requires the per-user app to be approved for **Accounts and Trading**; a market-data-only Schwab app receives an `auth_result` failure with an actionable message (its REST calibration still works).\n\n**Wire protocol:** JSON messages with discriminated `type` field. See the [Streaming Documentation](/docs/streaming) for the full protocol reference.\n\n**Inbound rate limit.** Frames you SEND are token-bucketed per session. Before the API key has been validated the allowance is a conservative floor (5/s, burst 10); before `welcome`, once the key is known, it is raised to your tier's `maxMessagesPerSecondPerWsSession`, carrying the current fill over rather than resetting. An over-rate frame is DROPPED, not queued, and does not reset the idle timer; you get an `error: INBOUND_RATE_LIMIT` notice at most once per second, and a session that keeps exceeding it is closed with 4429.\n\n**Rate shaping is announced.** When outbound data events exceed your per-session cap they are dropped, and the session now emits a `rate_shaped` control event (`droppedMessages`, `maxMessagesPerSecond`) at most once per second. Previously a shaped stream was indistinguishable from a quiet market. Control events are exempt from the cap, including this one.\n\n**Idle means no subscriptions, not no traffic.** A session holding at least one subscription is never closed for inactivity, however long it stays silent; consuming a stream is the point. A session holding nothing is closed after 30 minutes.\n\n**Channel scopes.** The `exposure` channel runs the same computation as `/v1/compute/exposure` and therefore requires the `compute` scope in addition to `streaming`. It is enforced: a subscribe that includes a channel your key's scopes do not cover is rejected in full with `error: CHANNEL_SCOPE_REQUIRED` (non-fatal: the session stays usable for the channels your key does cover). On each successful 60s re-authorization the live scope set is replaced, and an active channel whose scope was revoked is unsubscribed then. A database failure can delay that decision up to the separately documented 10-minute unverified ceiling.\n\n**Connection lifecycle:** the server's setup (API-key check, tier + `streaming` scope gates, concurrency-slot acquisition) is asynchronous, and broker authentication (Tradier/DXLink/Schwab/moomoo handshake) is asynchronous again. Protocol order: `welcome` → `auth` → `auth_result` → `subscribe`. Early frames that arrive before `welcome` are buffered (up to 16) and drained once the session is wired, so sending `auth` in `onopen` works in practice — but the buffer protects only the transport race; protocol ordering still applies, so don't pre-queue `subscribe` before `auth_result`. Racing past the buffer cap returns `error: PRE_WELCOME_BUFFER_FULL`.\n\n**Quick example:**\n```\nwscat -c wss://data.optionsanalysissuite.com/v1/ws?apiKey=oas_live_...\n\n< {\"type\":\"welcome\",\"sessionId\":\"ws_...\",\"serverTime\":...,\"version\":\"1.1\"}\n> {\"type\":\"auth\",\"broker\":\"tastytrade\",\"credentials\":{\"tastytradeRefreshToken\":\"...\",\"tastytradeClientSecret\":\"...\"}}\n< {\"type\":\"connection\",\"status\":\"connecting\",\"broker\":\"tastytrade\"}\n< {\"type\":\"connection\",\"status\":\"connected\",\"broker\":\"tastytrade\"}\n< {\"type\":\"auth_result\",\"success\":true,\"broker\":\"tastytrade\"}\n> {\"type\":\"subscribe\",\"channels\":[\"quotes\",\"greeks\",\"exposure\"],\"symbols\":[\"SPY\"],\"exposureOptions\":{\"methodology\":2,\"riskFreeRate\":0.0425,\"dividendYield\":0.012}}\n< {\"type\":\"subscribed\",\"channels\":[\"quotes\",\"greeks\",\"exposure\"],\"symbols\":[\"SPY\"],\"methodology\":2,\"methodologySource\":\"request\"}\n< {\"type\":\"quote\",\"symbol\":\"SPY\",\"bid\":655.61,\"ask\":656.41,...}\n```\n\n**Session auth**: API key required via `apiKey` query param, `Authorization: Bearer`, or `X-API-Key`.\n",
         "tags": [
           "Streaming"
         ],
@@ -8980,6 +9617,1332 @@
   },
   "components": {
     "schemas": {
+      "ExposureV2BookValues": {
+        "type": "object",
+        "description": "One view's five reported numbers; null where the metric is unavailable (its coverage says why).",
+        "required": [
+          "gex",
+          "vegaExposure",
+          "vanna",
+          "charmFlow",
+          "vomma"
+        ],
+        "properties": {
+          "gex": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The change in the view's underlying-equivalent delta for a +1% move of the reference (USD of delta per 1% move)."
+          },
+          "vegaExposure": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The change in the view's option value for +1 vol point (USD per vol point)."
+          },
+          "vanna": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The change in the view's delta for +1 vol point: positive means its delta-neutral hedger sells when IV rises (USD of delta per vol point)."
+          },
+          "charmFlow": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The underlying-equivalent USD the view's holder trades per calendar day to stay delta-neutral: positive means buying (USD per calendar day)."
+          },
+          "vomma": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The change in the view's per-point vega exposure for +1 vol point (USD per (vol point)^2)."
+          }
+        },
+        "additionalProperties": false
+      },
+      "ExposureV2SideBases": {
+        "type": "object",
+        "description": "One side's long-holder bases: per-side dollar GEX, DEX, vega, vanna, charm at a fixed reference, the roll basis and vomma; null where unavailable.",
+        "required": [
+          "gex",
+          "dex",
+          "vega",
+          "vanna",
+          "charmFixedRef",
+          "rollBasis",
+          "vomma"
+        ],
+        "properties": {
+          "gex": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "dex": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "vega": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "vanna": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "charmFixedRef": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "rollBasis": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "vomma": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "ExposureV2Coverage": {
+        "type": "object",
+        "description": "Leg counts per metric: how many of the counted legs the metric's sum includes. complete: all; partial: some; unavailable: none.",
+        "required": [
+          "gamma",
+          "delta",
+          "vega",
+          "vanna",
+          "charm",
+          "vomma"
+        ],
+        "properties": {
+          "gamma": {
+            "type": "object",
+            "required": [
+              "included",
+              "total",
+              "status"
+            ],
+            "properties": {
+              "included": {
+                "type": "integer"
+              },
+              "total": {
+                "type": "integer"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "complete",
+                  "partial",
+                  "unavailable"
+                ]
+              }
+            },
+            "additionalProperties": false
+          },
+          "delta": {
+            "type": "object",
+            "required": [
+              "included",
+              "total",
+              "status"
+            ],
+            "properties": {
+              "included": {
+                "type": "integer"
+              },
+              "total": {
+                "type": "integer"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "complete",
+                  "partial",
+                  "unavailable"
+                ]
+              }
+            },
+            "additionalProperties": false
+          },
+          "vega": {
+            "type": "object",
+            "required": [
+              "included",
+              "total",
+              "status"
+            ],
+            "properties": {
+              "included": {
+                "type": "integer"
+              },
+              "total": {
+                "type": "integer"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "complete",
+                  "partial",
+                  "unavailable"
+                ]
+              }
+            },
+            "additionalProperties": false
+          },
+          "vanna": {
+            "type": "object",
+            "required": [
+              "included",
+              "total",
+              "status"
+            ],
+            "properties": {
+              "included": {
+                "type": "integer"
+              },
+              "total": {
+                "type": "integer"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "complete",
+                  "partial",
+                  "unavailable"
+                ]
+              }
+            },
+            "additionalProperties": false
+          },
+          "charm": {
+            "type": "object",
+            "required": [
+              "included",
+              "total",
+              "status"
+            ],
+            "properties": {
+              "included": {
+                "type": "integer"
+              },
+              "total": {
+                "type": "integer"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "complete",
+                  "partial",
+                  "unavailable"
+                ]
+              }
+            },
+            "additionalProperties": false
+          },
+          "vomma": {
+            "type": "object",
+            "required": [
+              "included",
+              "total",
+              "status"
+            ],
+            "properties": {
+              "included": {
+                "type": "integer"
+              },
+              "total": {
+                "type": "integer"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "complete",
+                  "partial",
+                  "unavailable"
+                ]
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "ExposureV2Block": {
+        "type": "object",
+        "description": "Methodology 2's public block: the assumed dealer book and Long OI over one chain, DEX outside the books, each side's bases, and each metric's coverage.",
+        "required": [
+          "methodology",
+          "rollModel",
+          "units",
+          "source",
+          "asOf",
+          "scope",
+          "referenceKind",
+          "charmTimeBasis",
+          "rollStatus",
+          "carry",
+          "carryFit",
+          "assumedDealerBook",
+          "longOi",
+          "putMinusCallDeltaBalance",
+          "bases",
+          "coverage"
+        ],
+        "properties": {
+          "methodology": {
+            "type": "integer",
+            "const": 2,
+            "description": "Methodology 2: the assumed dealer book and Long OI over the chain's per-side bases."
+          },
+          "rollModel": {
+            "type": "string",
+            "enum": [
+              "log-forward-theil-sen-v1"
+            ],
+            "description": "The carry model a forward-referenced chain's charm rolls under."
+          },
+          "units": {
+            "type": "object",
+            "description": "Each reported number's unit.",
+            "required": [
+              "gex",
+              "vegaExposure",
+              "vanna",
+              "charmFlow",
+              "vomma",
+              "putMinusCallDeltaBalance"
+            ],
+            "properties": {
+              "gex": {
+                "type": "string"
+              },
+              "vegaExposure": {
+                "type": "string"
+              },
+              "vanna": {
+                "type": "string"
+              },
+              "charmFlow": {
+                "type": "string"
+              },
+              "vomma": {
+                "type": "string"
+              },
+              "putMinusCallDeltaBalance": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          },
+          "source": {
+            "type": "string",
+            "description": "What the book was computed from, in words: \"eod_options_chain\" or \"eod_futures_options_chain\" for a stored end-of-day book, \"intraday_options_chain\" for a regime row's intraday book, \"request\" for a submitted chain, \"live_broker_chain\" for a stream event's broker window."
+          },
+          "asOf": {
+            "type": "string",
+            "description": "What the numbers are as of: a stored book's market date (YYYY-MM-DD), a computed one's instant (ISO 8601)."
+          },
+          "scope": {
+            "type": "object",
+            "description": "Which expirations the numbers sum: every one (\"all\"), the 0-60 day window, or the named dates.",
+            "required": [
+              "expirations"
+            ],
+            "properties": {
+              "expirations": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "all",
+                      "0-60d"
+                    ]
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "date"
+                    }
+                  }
+                ]
+              }
+            },
+            "additionalProperties": false
+          },
+          "referenceKind": {
+            "type": "string",
+            "enum": [
+              "spot",
+              "forward",
+              "future"
+            ],
+            "description": "The price the book's deltas and dollar Greeks are on: the spot, each expiration's forward (an index), or the future."
+          },
+          "charmTimeBasis": {
+            "type": "string",
+            "enum": [
+              "calendar-day"
+            ],
+            "description": "Charm flow is per calendar day."
+          },
+          "rollStatus": {
+            "type": "string",
+            "enum": [
+              "notApplicable",
+              "fitted",
+              "insufficientData",
+              "rejectedFit"
+            ],
+            "description": "The carry fit's outcome: notApplicable for a spot or future reference."
+          },
+          "carry": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The fitted carry (log forward per year), only when rollStatus is fitted."
+          },
+          "carryFit": {
+            "anyOf": [
+              {
+                "type": "object",
+                "description": "The carry fit's diagnostics wherever one was attempted. looMaxDeviation is the maximum leave-one-expiration-out sensitivity, not an uncertainty interval.",
+                "required": [
+                  "n",
+                  "span",
+                  "distinctForwardCount",
+                  "scale",
+                  "looMaxDeviation"
+                ],
+                "properties": {
+                  "n": {
+                    "type": "integer",
+                    "description": "Expirations 7 days to a year out."
+                  },
+                  "span": {
+                    "type": "number",
+                    "description": "Their span, years."
+                  },
+                  "distinctForwardCount": {
+                    "type": "integer"
+                  },
+                  "scale": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "The residuals' robust scale."
+                  },
+                  "looMaxDeviation": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "assumedDealerBook": {
+            "$ref": "#/components/schemas/ExposureV2BookValues",
+            "description": "The assumed dealer book at a dealer share of 1: dealers long every call and short every put of open interest. It scales linearly in the share."
+          },
+          "longOi": {
+            "$ref": "#/components/schemas/ExposureV2BookValues",
+            "description": "Long OI: the book of every open contract's holder, long calls and long puts."
+          },
+          "putMinusCallDeltaBalance": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "DEX: the negated sum of the long holders' call and put deltas, the same in every view and at every p (USD, underlying-equivalent)."
+          },
+          "bases": {
+            "type": "object",
+            "description": "Each side's long-holder bases, the inputs every view is built from.",
+            "required": [
+              "call",
+              "put"
+            ],
+            "properties": {
+              "call": {
+                "$ref": "#/components/schemas/ExposureV2SideBases"
+              },
+              "put": {
+                "$ref": "#/components/schemas/ExposureV2SideBases"
+              }
+            },
+            "additionalProperties": false
+          },
+          "coverage": {
+            "$ref": "#/components/schemas/ExposureV2Coverage"
+          },
+          "expiryScope": {
+            "type": "string",
+            "enum": [
+              "eod-session-1",
+              "intraday-clock-1"
+            ],
+            "description": "Which expiring legs the book leaves out: \"eod-session-1\" (an end-of-day book as of its market date drops the legs whose expiration session is on or before it) or \"intraday-clock-1\" (a live book keeps an expiration until its session's close: 16:00 ET, or 13:00 ET on an NYSE early close). Absent on a stored book written before the rule, which counted every leg."
+          }
+        },
+        "additionalProperties": false
+      },
+      "RegimeExposureMeta": {
+        "type": "object",
+        "description": "A regime row's `vector._meta` (GET /v1/data/regime/current, /v1/data/regime/{symbol} and /v1/data/regime/intraday/{symbol} serve the rows as stored): beside its other fields, the row's two exposure blocks over the same chain, spot and rates. `gex` is methodology 1 (legacy: walls, flip and regime): RegimeExposureV1. `gexV2` is methodology 2's public block: a daily row's over the end-of-day chain (source \"eod_options_chain\", expiryScope \"eod-session-1\" where stated), an intraday row's over the intraday chain as of its scan (source \"intraday_options_chain\", expiryScope \"intraday-clock-1\"). Either is null when its computation failed, and a row written before a block existed lacks it.",
+        "properties": {
+          "gex": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RegimeExposureV1"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "gexV2": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExposureV2Block"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "ExposureV2Strike": {
+        "type": "object",
+        "description": "One strike's views: both books at a dealer share of 1, DEX, and that strike's coverage.",
+        "required": [
+          "strike",
+          "assumedDealerBook",
+          "longOi",
+          "putMinusCallDeltaBalance",
+          "coverage"
+        ],
+        "properties": {
+          "strike": {
+            "type": "number"
+          },
+          "assumedDealerBook": {
+            "$ref": "#/components/schemas/ExposureV2BookValues"
+          },
+          "longOi": {
+            "$ref": "#/components/schemas/ExposureV2BookValues"
+          },
+          "putMinusCallDeltaBalance": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "coverage": {
+            "$ref": "#/components/schemas/ExposureV2Coverage"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ExposureV2Qualifier": {
+        "description": "Why a stored book's values may count contracts that expired on its date: mayInclude (the expiry-scope correction pending, or its outcome unverified), affected (the repair found the date affected and deferred or refused its correction), or unscoped (strikes whose expiration could not be read, their count; null when the count could not be read).",
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "kind",
+              "cause"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "mayInclude"
+                ]
+              },
+              "cause": {
+                "type": "string",
+                "enum": [
+                  "pending",
+                  "unverified"
+                ]
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind",
+              "disposition"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "affected"
+                ]
+              },
+              "disposition": {
+                "type": "string",
+                "enum": [
+                  "deferred",
+                  "refused"
+                ]
+              }
+            },
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "required": [
+              "kind",
+              "strikes"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "unscoped"
+                ]
+              },
+              "strikes": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "additionalProperties": false
+          }
+        ]
+      },
+      "ExposureV2Stored": {
+        "type": "object",
+        "description": "A stored end-of-day book of methodology 2. On the symbol's newest date it is served only as one publication with its snapshot (else ExposureV2Unavailable); a past date's book stands alone, totals only. The qualifier reflects the expiry-scope repair as of the response, which is cacheable for up to an hour.",
+        "required": [
+          "methodology",
+          "rollModel",
+          "units",
+          "source",
+          "asOf",
+          "scope",
+          "referenceKind",
+          "charmTimeBasis",
+          "rollStatus",
+          "carry",
+          "carryFit",
+          "assumedDealerBook",
+          "longOi",
+          "putMinusCallDeltaBalance",
+          "bases",
+          "coverage",
+          "available",
+          "provenance",
+          "definition",
+          "expiryQualifier"
+        ],
+        "properties": {
+          "available": {
+            "type": "boolean",
+            "const": true
+          },
+          "methodology": {
+            "type": "integer",
+            "const": 2,
+            "description": "Methodology 2: the assumed dealer book and Long OI over the chain's per-side bases."
+          },
+          "rollModel": {
+            "type": "string",
+            "enum": [
+              "log-forward-theil-sen-v1"
+            ],
+            "description": "The carry model a forward-referenced chain's charm rolls under."
+          },
+          "units": {
+            "type": "object",
+            "description": "Each reported number's unit.",
+            "required": [
+              "gex",
+              "vegaExposure",
+              "vanna",
+              "charmFlow",
+              "vomma",
+              "putMinusCallDeltaBalance"
+            ],
+            "properties": {
+              "gex": {
+                "type": "string"
+              },
+              "vegaExposure": {
+                "type": "string"
+              },
+              "vanna": {
+                "type": "string"
+              },
+              "charmFlow": {
+                "type": "string"
+              },
+              "vomma": {
+                "type": "string"
+              },
+              "putMinusCallDeltaBalance": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          },
+          "source": {
+            "type": "string",
+            "description": "What the book was computed from, in words: \"eod_options_chain\" or \"eod_futures_options_chain\" for a stored end-of-day book, \"intraday_options_chain\" for a regime row's intraday book, \"request\" for a submitted chain, \"live_broker_chain\" for a stream event's broker window."
+          },
+          "asOf": {
+            "type": "string",
+            "description": "What the numbers are as of: a stored book's market date (YYYY-MM-DD), a computed one's instant (ISO 8601)."
+          },
+          "scope": {
+            "type": "object",
+            "description": "Which expirations the numbers sum: every one (\"all\"), the 0-60 day window, or the named dates.",
+            "required": [
+              "expirations"
+            ],
+            "properties": {
+              "expirations": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "all",
+                      "0-60d"
+                    ]
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "date"
+                    }
+                  }
+                ]
+              }
+            },
+            "additionalProperties": false
+          },
+          "referenceKind": {
+            "type": "string",
+            "enum": [
+              "spot",
+              "forward",
+              "future"
+            ],
+            "description": "The price the book's deltas and dollar Greeks are on: the spot, each expiration's forward (an index), or the future."
+          },
+          "charmTimeBasis": {
+            "type": "string",
+            "enum": [
+              "calendar-day"
+            ],
+            "description": "Charm flow is per calendar day."
+          },
+          "rollStatus": {
+            "type": "string",
+            "enum": [
+              "notApplicable",
+              "fitted",
+              "insufficientData",
+              "rejectedFit"
+            ],
+            "description": "The carry fit's outcome: notApplicable for a spot or future reference."
+          },
+          "carry": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The fitted carry (log forward per year), only when rollStatus is fitted."
+          },
+          "carryFit": {
+            "anyOf": [
+              {
+                "type": "object",
+                "description": "The carry fit's diagnostics wherever one was attempted. looMaxDeviation is the maximum leave-one-expiration-out sensitivity, not an uncertainty interval.",
+                "required": [
+                  "n",
+                  "span",
+                  "distinctForwardCount",
+                  "scale",
+                  "looMaxDeviation"
+                ],
+                "properties": {
+                  "n": {
+                    "type": "integer",
+                    "description": "Expirations 7 days to a year out."
+                  },
+                  "span": {
+                    "type": "number",
+                    "description": "Their span, years."
+                  },
+                  "distinctForwardCount": {
+                    "type": "integer"
+                  },
+                  "scale": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "The residuals' robust scale."
+                  },
+                  "looMaxDeviation": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "assumedDealerBook": {
+            "$ref": "#/components/schemas/ExposureV2BookValues",
+            "description": "The assumed dealer book at a dealer share of 1: dealers long every call and short every put of open interest. It scales linearly in the share."
+          },
+          "longOi": {
+            "$ref": "#/components/schemas/ExposureV2BookValues",
+            "description": "Long OI: the book of every open contract's holder, long calls and long puts."
+          },
+          "putMinusCallDeltaBalance": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "DEX: the negated sum of the long holders' call and put deltas, the same in every view and at every p (USD, underlying-equivalent)."
+          },
+          "bases": {
+            "type": "object",
+            "description": "Each side's long-holder bases, the inputs every view is built from.",
+            "required": [
+              "call",
+              "put"
+            ],
+            "properties": {
+              "call": {
+                "$ref": "#/components/schemas/ExposureV2SideBases"
+              },
+              "put": {
+                "$ref": "#/components/schemas/ExposureV2SideBases"
+              }
+            },
+            "additionalProperties": false
+          },
+          "coverage": {
+            "$ref": "#/components/schemas/ExposureV2Coverage"
+          },
+          "expiryScope": {
+            "type": "string",
+            "enum": [
+              "eod-session-1",
+              "intraday-clock-1"
+            ],
+            "description": "Which expiring legs the book leaves out: \"eod-session-1\" (an end-of-day book as of its market date drops the legs whose expiration session is on or before it) or \"intraday-clock-1\" (a live book keeps an expiration until its session's close: 16:00 ET, or 13:00 ET on an NYSE early close). Absent on a stored book written before the rule, which counted every leg."
+          },
+          "provenance": {
+            "type": "string",
+            "enum": [
+              "nightly",
+              "reconstruction"
+            ],
+            "description": "Written by the nightly, or by the history reconstruction."
+          },
+          "definition": {
+            "type": "string",
+            "enum": [
+              "expiry-scoped",
+              "legacy-scope"
+            ],
+            "description": "expiry-scoped: the book drops the legs that expired on its date. legacy-scope: written before that rule; expiryQualifier says what is known."
+          },
+          "expiryQualifier": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExposureV2Qualifier"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "byStrike": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExposureV2Strike"
+            },
+            "description": "Each strike's views: on the newest date, from the strike curve of the same publication."
+          },
+          "byStrikeUnavailable": {
+            "type": "string",
+            "enum": [
+              "past date",
+              "no curve",
+              "curve of another run",
+              "unreadable curve"
+            ],
+            "description": "Present exactly when byStrike is absent: why."
+          }
+        },
+        "additionalProperties": false
+      },
+      "ExposureV2Unavailable": {
+        "type": "object",
+        "description": "No methodology-2 book for this answer: none stored, the newest date's book not one publication with its snapshot, or an unreadable row. Never methodology-1 numbers.",
+        "required": [
+          "available",
+          "reason"
+        ],
+        "properties": {
+          "available": {
+            "type": "boolean",
+            "const": false
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "no methodology-2 row",
+              "publication run mismatch",
+              "unreadable"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "ExposureV2Computed": {
+        "type": "object",
+        "description": "Methodology 2 over a submitted chain: the public block (source \"request\", asOf the instant the expiry scope was applied at, expiryScope \"intraday-clock-1\"), the legs the clock rule kept and dropped, and each strike's views unless ?detail=snapshot. No walls, flip or regime.",
+        "required": [
+          "methodology",
+          "rollModel",
+          "units",
+          "source",
+          "asOf",
+          "scope",
+          "referenceKind",
+          "charmTimeBasis",
+          "rollStatus",
+          "carry",
+          "carryFit",
+          "assumedDealerBook",
+          "longOi",
+          "putMinusCallDeltaBalance",
+          "bases",
+          "coverage",
+          "expiryCensus"
+        ],
+        "properties": {
+          "methodology": {
+            "type": "integer",
+            "const": 2,
+            "description": "Methodology 2: the assumed dealer book and Long OI over the chain's per-side bases."
+          },
+          "rollModel": {
+            "type": "string",
+            "enum": [
+              "log-forward-theil-sen-v1"
+            ],
+            "description": "The carry model a forward-referenced chain's charm rolls under."
+          },
+          "units": {
+            "type": "object",
+            "description": "Each reported number's unit.",
+            "required": [
+              "gex",
+              "vegaExposure",
+              "vanna",
+              "charmFlow",
+              "vomma",
+              "putMinusCallDeltaBalance"
+            ],
+            "properties": {
+              "gex": {
+                "type": "string"
+              },
+              "vegaExposure": {
+                "type": "string"
+              },
+              "vanna": {
+                "type": "string"
+              },
+              "charmFlow": {
+                "type": "string"
+              },
+              "vomma": {
+                "type": "string"
+              },
+              "putMinusCallDeltaBalance": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          },
+          "source": {
+            "type": "string",
+            "description": "What the book was computed from, in words: \"eod_options_chain\" or \"eod_futures_options_chain\" for a stored end-of-day book, \"intraday_options_chain\" for a regime row's intraday book, \"request\" for a submitted chain, \"live_broker_chain\" for a stream event's broker window."
+          },
+          "asOf": {
+            "type": "string",
+            "description": "What the numbers are as of: a stored book's market date (YYYY-MM-DD), a computed one's instant (ISO 8601)."
+          },
+          "scope": {
+            "type": "object",
+            "description": "Which expirations the numbers sum: every one (\"all\"), the 0-60 day window, or the named dates.",
+            "required": [
+              "expirations"
+            ],
+            "properties": {
+              "expirations": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "enum": [
+                      "all",
+                      "0-60d"
+                    ]
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "date"
+                    }
+                  }
+                ]
+              }
+            },
+            "additionalProperties": false
+          },
+          "referenceKind": {
+            "type": "string",
+            "enum": [
+              "spot",
+              "forward",
+              "future"
+            ],
+            "description": "The price the book's deltas and dollar Greeks are on: the spot, each expiration's forward (an index), or the future."
+          },
+          "charmTimeBasis": {
+            "type": "string",
+            "enum": [
+              "calendar-day"
+            ],
+            "description": "Charm flow is per calendar day."
+          },
+          "rollStatus": {
+            "type": "string",
+            "enum": [
+              "notApplicable",
+              "fitted",
+              "insufficientData",
+              "rejectedFit"
+            ],
+            "description": "The carry fit's outcome: notApplicable for a spot or future reference."
+          },
+          "carry": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The fitted carry (log forward per year), only when rollStatus is fitted."
+          },
+          "carryFit": {
+            "anyOf": [
+              {
+                "type": "object",
+                "description": "The carry fit's diagnostics wherever one was attempted. looMaxDeviation is the maximum leave-one-expiration-out sensitivity, not an uncertainty interval.",
+                "required": [
+                  "n",
+                  "span",
+                  "distinctForwardCount",
+                  "scale",
+                  "looMaxDeviation"
+                ],
+                "properties": {
+                  "n": {
+                    "type": "integer",
+                    "description": "Expirations 7 days to a year out."
+                  },
+                  "span": {
+                    "type": "number",
+                    "description": "Their span, years."
+                  },
+                  "distinctForwardCount": {
+                    "type": "integer"
+                  },
+                  "scale": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "The residuals' robust scale."
+                  },
+                  "looMaxDeviation": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "assumedDealerBook": {
+            "$ref": "#/components/schemas/ExposureV2BookValues",
+            "description": "The assumed dealer book at a dealer share of 1: dealers long every call and short every put of open interest. It scales linearly in the share."
+          },
+          "longOi": {
+            "$ref": "#/components/schemas/ExposureV2BookValues",
+            "description": "Long OI: the book of every open contract's holder, long calls and long puts."
+          },
+          "putMinusCallDeltaBalance": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "DEX: the negated sum of the long holders' call and put deltas, the same in every view and at every p (USD, underlying-equivalent)."
+          },
+          "bases": {
+            "type": "object",
+            "description": "Each side's long-holder bases, the inputs every view is built from.",
+            "required": [
+              "call",
+              "put"
+            ],
+            "properties": {
+              "call": {
+                "$ref": "#/components/schemas/ExposureV2SideBases"
+              },
+              "put": {
+                "$ref": "#/components/schemas/ExposureV2SideBases"
+              }
+            },
+            "additionalProperties": false
+          },
+          "coverage": {
+            "$ref": "#/components/schemas/ExposureV2Coverage"
+          },
+          "expiryScope": {
+            "type": "string",
+            "enum": [
+              "eod-session-1",
+              "intraday-clock-1"
+            ],
+            "description": "Which expiring legs the book leaves out: \"eod-session-1\" (an end-of-day book as of its market date drops the legs whose expiration session is on or before it) or \"intraday-clock-1\" (a live book keeps an expiration until its session's close: 16:00 ET, or 13:00 ET on an NYSE early close). Absent on a stored book written before the rule, which counted every leg."
+          },
+          "expiryCensus": {
+            "type": "object",
+            "description": "The submitted legs by the clock rule: kept in scope, dropped as expired, kept with an unreadable expiration (no expir_date).",
+            "required": [
+              "inScope",
+              "expired",
+              "unscoped"
+            ],
+            "properties": {
+              "inScope": {
+                "type": "integer"
+              },
+              "expired": {
+                "type": "integer"
+              },
+              "unscoped": {
+                "type": "integer"
+              }
+            },
+            "additionalProperties": false
+          },
+          "byStrike": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExposureV2Strike"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "ExposureResponseV2": {
+        "type": "object",
+        "description": "A methodology-2 answer: the label and the book. Its required methodology 2 and exposureV2 keep it disjoint from the two methodology-1 shapes.",
+        "required": [
+          "methodology",
+          "methodologySource",
+          "exposureV2"
+        ],
+        "properties": {
+          "methodology": {
+            "type": "integer",
+            "const": 2
+          },
+          "methodologySource": {
+            "type": "string",
+            "enum": [
+              "request",
+              "default"
+            ],
+            "description": "request: the methodology the request named. default: the service's central default, as read for this request."
+          },
+          "methodologyStale": {
+            "type": "boolean",
+            "const": true,
+            "description": "Present only when the default could not be re-read and its last good value was used."
+          },
+          "exposureV2": {
+            "$ref": "#/components/schemas/ExposureV2Computed"
+          },
+          "resolved": {
+            "$ref": "#/components/schemas/ResolvedSummary"
+          }
+        },
+        "additionalProperties": false
+      },
       "PriceRequest": {
         "type": "object",
         "properties": {
@@ -9640,6 +11603,25 @@
           },
           "wallMaxDte": {
             "type": "number"
+          },
+          "methodology": {
+            "description": "Which engine computes the exposure: 1 (legacy: walls, flip and regime) or 2 (the assumed dealer book and Long OI over the chain's per-side bases, with a forward basis for an index). Omitted: the service's central default (1 until the cutover), and the answer says which it used (methodologySource \"default\"); a 503 when that default cannot be read. Methodology 2 references each row's own forward only for a named forward-priced index (send `symbol`): its rows must be forward-encoded, stk_px_cents being that expiration's forward, as the end-of-day vendor encodes it from 2024-04-02; a historical asOf does not make prepaid-era rows supported. Such a book reads only riskFreeRate (q = r), so spotPrice and dividendYield need not be sent or resolved. Every other chain is on the resolved spot.",
+            "anyOf": [
+              {
+                "type": "number",
+                "const": 1
+              },
+              {
+                "type": "number",
+                "const": 2
+              }
+            ]
+          },
+          "asOf": {
+            "description": "Methodology 2 only: the instant its expiry scope is applied at (ISO 8601; default the request time). A leg counts until its expiration session's close (16:00 ET, or 13:00 ET on an NYSE early close); a row without expir_date counts as unscoped and stays in.",
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
           }
         },
         "required": [
@@ -11443,6 +13425,24 @@
           },
           "resolved": {
             "$ref": "#/components/schemas/ResolvedSummary"
+          },
+          "methodology": {
+            "type": "integer",
+            "const": 1,
+            "description": "Methodology 1 (legacy): walls, flip and regime."
+          },
+          "methodologySource": {
+            "type": "string",
+            "enum": [
+              "request",
+              "default"
+            ],
+            "description": "request: the methodology the request named. default: the service's central default, as read for this request."
+          },
+          "methodologyStale": {
+            "type": "boolean",
+            "const": true,
+            "description": "Present only when the default could not be re-read and its last good value was used."
           }
         },
         "additionalProperties": false
@@ -11466,6 +13466,24 @@
           },
           "resolved": {
             "$ref": "#/components/schemas/ResolvedSummary"
+          },
+          "methodology": {
+            "type": "integer",
+            "const": 1,
+            "description": "Methodology 1 (legacy): walls, flip and regime."
+          },
+          "methodologySource": {
+            "type": "string",
+            "enum": [
+              "request",
+              "default"
+            ],
+            "description": "request: the methodology the request named. default: the service's central default, as read for this request."
+          },
+          "methodologyStale": {
+            "type": "boolean",
+            "const": true,
+            "description": "Present only when the default could not be re-read and its last good value was used."
           }
         },
         "additionalProperties": false
@@ -11477,9 +13495,12 @@
           },
           {
             "$ref": "#/components/schemas/ExposureSnapshot"
+          },
+          {
+            "$ref": "#/components/schemas/ExposureResponseV2"
           }
         ],
-        "description": "Default: ExposureFullResult ({ snapshot, byStrike }). With ?detail=snapshot: ExposureSnapshot directly."
+        "description": "Methodology 1: ExposureFullResult ({ snapshot, byStrike }) by default, ExposureSnapshot directly with ?detail=snapshot. Methodology 2: ExposureResponseV2 ({ methodology: 2, exposureV2 })."
       },
       "ScenarioMatrixEntry": {
         "type": "object",
@@ -12445,7 +14466,7 @@
       },
       "RegimeResponse": {
         "type": "object",
-        "description": "Latest market regime. Both `daily` and `intraday` are raw rows from the regime_daily / regime_intraday warehouse tables. Field set is owned by the data-pipeline team and may evolve over time — access defensively. Either field may be null when no row is available.",
+        "description": "Latest market regime. Both `daily` and `intraday` are raw rows from the regime_daily / regime_intraday warehouse tables. Field set is owned by the data-pipeline team and may evolve over time — access defensively. Either field may be null when no row is available. A row's `vector._meta` carries its two Greek exposure blocks, `gex` (methodology 1) and `gexV2` (methodology 2): see RegimeExposureMeta.",
         "properties": {
           "daily": {
             "anyOf": [
@@ -12501,7 +14522,7 @@
       },
       "SnapshotResponse": {
         "type": "object",
-        "description": "EOD options snapshot: spot, IV term structure, GEX/DEX/HV, max pain, plus opaque curve payloads consumed by the web app charts.",
+        "description": "EOD options snapshot: spot, IV term structure, GEX/DEX/HV, max pain, plus opaque curve payloads consumed by the web app charts. netGex, netDex and the *ByStrike curves are methodology 1 (legacy); exposureV2 carries methodology 2 beside them.",
         "required": [
           "ticker",
           "date",
@@ -12575,7 +14596,8 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "Methodology 1 (legacy) net GEX."
           },
           "netDex": {
             "anyOf": [
@@ -12585,7 +14607,8 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "Methodology 1 (legacy) net DEX."
           },
           "atmIv": {
             "anyOf": [
@@ -12914,13 +14937,24 @@
                 "type": "null"
               }
             ]
+          },
+          "exposureV2": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ExposureV2Stored"
+              },
+              {
+                "$ref": "#/components/schemas/ExposureV2Unavailable"
+              }
+            ],
+            "description": "Methodology 2 beside the legacy fields, never inside them."
           }
         },
         "additionalProperties": false
       },
       "EodExposureResponse": {
         "type": "object",
-        "description": "Compact end-of-day dealer-positioning levels for one symbol, computed over a single 0-60 DTE universe so every field agrees: gamma magnet, gamma flip, call/put walls, dealer regime, net GEX/DEX, 30-day expected move, and the top strikes by gamma contribution. The window, units, and schemaVersion travel with every row. Returns 404 when no usable EOD option data exists for the symbol/date (e.g. thinly-traded names or futures symbols, which are not covered).",
+        "description": "Compact end-of-day dealer-positioning levels for one symbol. The legacy fields (methodology 1) are computed over a single 0-60 DTE universe so every one agrees: gamma magnet, gamma flip, call/put walls, dealer regime, net GEX/DEX, 30-day expected move, and the top strikes by gamma contribution; the window, units, and schemaVersion travel with every row. exposureV2 carries methodology 2 beside them, over every expiration after the date. Returns 404 when no usable EOD option data exists for the symbol/date (e.g. thinly-traded names or futures symbols, which are not covered), whatever its methodology-2 book.",
         "required": [
           "schemaVersion",
           "symbol",
@@ -13136,6 +15170,17 @@
             "additionalProperties": {
               "type": "string"
             }
+          },
+          "exposureV2": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ExposureV2Stored"
+              },
+              {
+                "$ref": "#/components/schemas/ExposureV2Unavailable"
+              }
+            ],
+            "description": "Methodology 2 beside the legacy fields, never inside them."
           }
         },
         "additionalProperties": false
@@ -14134,6 +16179,266 @@
           "retryable",
           "provider"
         ]
+      },
+      "RegimeExposureStrikeAvailability": {
+        "type": "object",
+        "description": "Which of a regime top strike's Greeks its rows carried (from 2026-07-20).",
+        "required": [
+          "gamma",
+          "delta",
+          "vega",
+          "higherOrder"
+        ],
+        "properties": {
+          "gamma": {
+            "type": "boolean"
+          },
+          "delta": {
+            "type": "boolean"
+          },
+          "vega": {
+            "type": "boolean"
+          },
+          "higherOrder": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "RegimeExposureStrike": {
+        "type": "object",
+        "description": "One of a regime row's top strikes: the ExposureStrike fields, with which Greeks its rows carried.",
+        "required": [
+          "strike",
+          "callGamma",
+          "putGamma",
+          "netGamma",
+          "callDelta",
+          "putDelta",
+          "netDelta",
+          "callVega",
+          "putVega",
+          "netVega",
+          "callVanna",
+          "putVanna",
+          "netVanna",
+          "callCharm",
+          "putCharm",
+          "netCharm",
+          "callVomma",
+          "putVomma",
+          "netVomma"
+        ],
+        "properties": {
+          "strike": {
+            "type": "number"
+          },
+          "callGamma": {
+            "type": "number"
+          },
+          "putGamma": {
+            "type": "number"
+          },
+          "netGamma": {
+            "type": "number"
+          },
+          "callDelta": {
+            "type": "number"
+          },
+          "putDelta": {
+            "type": "number"
+          },
+          "netDelta": {
+            "type": "number"
+          },
+          "callVega": {
+            "type": "number"
+          },
+          "putVega": {
+            "type": "number"
+          },
+          "netVega": {
+            "type": "number"
+          },
+          "callVanna": {
+            "type": "number"
+          },
+          "putVanna": {
+            "type": "number"
+          },
+          "netVanna": {
+            "type": "number"
+          },
+          "callCharm": {
+            "type": "number"
+          },
+          "putCharm": {
+            "type": "number"
+          },
+          "netCharm": {
+            "type": "number"
+          },
+          "callVomma": {
+            "type": "number"
+          },
+          "putVomma": {
+            "type": "number"
+          },
+          "netVomma": {
+            "type": "number"
+          },
+          "availability": {
+            "$ref": "#/components/schemas/RegimeExposureStrikeAvailability"
+          }
+        },
+        "additionalProperties": false
+      },
+      "RegimeExposureAvailability": {
+        "type": "object",
+        "description": "How many rows each Greek counted in a regime row's methodology 1 block (from 2026-07-20): gamma, delta, vega, and the higher-order Greeks (vanna, charm, vomma).",
+        "required": [
+          "gammaRows",
+          "deltaRows",
+          "vegaRows",
+          "higherOrderRows"
+        ],
+        "properties": {
+          "gammaRows": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "deltaRows": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "vegaRows": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "higherOrderRows": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "RegimeExposureV1": {
+        "type": "object",
+        "description": "A regime row's methodology 1 (legacy) block, `vector._meta.gex`: the ExposureSnapshot fields over the row's chain, with how many rows each Greek counted. Rows written before 2026-05-04 lack absGamma, before 2026-07-20 availability, before 2026-10-12 methodology.",
+        "required": [
+          "spotPrice",
+          "netGamma",
+          "netDelta",
+          "netVega",
+          "netVanna",
+          "netCharm",
+          "netVomma",
+          "callWall",
+          "putWall",
+          "gammaFlip",
+          "gammaConcentration",
+          "regime",
+          "topStrikes"
+        ],
+        "properties": {
+          "spotPrice": {
+            "type": "number"
+          },
+          "netGamma": {
+            "type": "number"
+          },
+          "netDelta": {
+            "type": "number"
+          },
+          "netVega": {
+            "type": "number"
+          },
+          "netVanna": {
+            "type": "number"
+          },
+          "netCharm": {
+            "type": "number",
+            "description": "Net dealer dollar charm per calendar day on the remaining-maturity sign for the dealer, the opposite of the time-passing `charm` of `/v1/compute/greeks`: one day of time passing moves the dollar delta of the dealers by minus `netCharm`."
+          },
+          "netVomma": {
+            "type": "number"
+          },
+          "callWall": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "putWall": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "gammaFlip": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "absGamma": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Strike with the largest absolute net gamma in the wall/flip universe"
+          },
+          "gammaConcentration": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "regime": {
+            "type": "string",
+            "enum": [
+              "positive",
+              "negative",
+              "neutral"
+            ]
+          },
+          "methodology": {
+            "type": "integer",
+            "const": 1,
+            "description": "Methodology 1 (legacy): walls, flip and regime."
+          },
+          "topStrikes": {
+            "type": "array",
+            "description": "Top-10 strikes by absolute net gamma",
+            "items": {
+              "$ref": "#/components/schemas/RegimeExposureStrike"
+            }
+          },
+          "availability": {
+            "$ref": "#/components/schemas/RegimeExposureAvailability"
+          }
+        },
+        "additionalProperties": false
       }
     },
     "securitySchemes": {
