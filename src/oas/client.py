@@ -12,7 +12,7 @@ the URL parameters directly.
 Return types: methods backed by tightened response schemas (snapshot,
 metrics, price, greeks, exposure, calibrate, history, IV surface, expected
 move, max pain, scenario, sensitivity, strategy, probability,
-regime/current) return Pydantic v2 models from
+regime/current) return typed Pydantic models from
 :mod:`oas._generated.models`. Methods backed by loose schemas — the generic
 ``ListResponse`` wrapper and several vendor-passthrough endpoints
 (company_profile, fundamentals, earnings, analysts, insiders, company_data,
@@ -28,7 +28,7 @@ Typical usage::
 
     with OASClient(api_key="oas_live_...") as client:
         snap = client.snapshot("SPY")
-        print(snap.atmIv, snap.netGex)
+        print(snap.atmIv, snap.maxPain)
 
         cal = client.calibrate(
             "SPY", model="heston",
@@ -47,7 +47,7 @@ from urllib.parse import quote
 from oas._generated.models import (
     EodExposureResponse,
     ExpectedMoveResponse,
-    ExposureResponse,
+    ExposureComputeResponse,
     GreeksResponse,
     HistoryResponse,
     IVSurfaceResponse,
@@ -280,21 +280,18 @@ class OASClient:
         spot_price: float | None = None,
         risk_free_rate: float | None = None,
         dividend_yield: float | None = None,
-        wall_max_dte: float | None = None,
         detail: str | None = None,
-        methodology: Literal[1, 2] | None = None,
         symbol: str | None = None,
         as_of: str | None = None,
-    ) -> ExposureResponse:
-        """Compute Greek exposure profile (operationId ``compute.exposure``).
+    ) -> ExposureComputeResponse:
+        """Compute the assumed dealer book over a submitted chain (operationId
+        ``compute.exposure``).
 
-        Aggregates per-strike option exposure (GEX, DEX, VEX, Vanna, Charm,
-        Vomma) under one of two methodologies. Methodology 1 (legacy) takes
-        the standard dealer-hedging convention (retail assumed net long calls
-        and net short puts, dealers the offsetting position) and adds walls,
-        the gamma flip and the regime. Methodology 2 is the assumed dealer
-        book and Long OI over each side's bases, with their coverage and no
-        walls, flip or regime.
+        The assumed dealer book (dealers long the calls and short the puts,
+        every contract of open interest) and Long OI over each side's bases:
+        GEX, the put-minus-call delta balance, vega exposure, vanna, charm flow
+        and vomma, each with its leg coverage. No walls, flip or regime: the
+        end-of-day exposure endpoint (:meth:`exposure_eod`) serves those levels.
 
         Args:
             strikes: List of per-strike rows. Required keys: ``strike_cents``,
@@ -307,50 +304,36 @@ class OASClient:
                 The server never assumes these three. Each is required unless
                 ``symbol`` lets the API resolve it (the answer's ``resolved``
                 block says which it filled); a missing one is a 422 naming
-                it. A methodology 2 book for a forward-priced index (``symbol``
-                such as ``"SPX"``) reads only the rate.
-            wall_max_dte: Cap (days) for considering a strike a "wall"
-                candidate (methodology 1). Server-side default if omitted.
-            detail: methodology 1: ``"snapshot"`` for the flat
-                :class:`ExposureSnapshot` shape; omit (or any other value)
-                for the full ``{snapshot, byStrike}`` wrapper. Methodology 2
-                always answers :class:`ExposureResponseV2`: ``"snapshot"``
-                leaves out ``exposureV2.byStrike``, the per-strike views.
-            methodology: ``1`` or ``2``. Omitted, the service's central
-                default, and the answer's ``methodologySource`` says
-                ``"default"``. Name it to keep one shape when the default
-                changes. A 503 when the default cannot be read.
+                it. A book for a forward-priced index (``symbol`` such as
+                ``"SPX"``) reads only the rate.
+            detail: ``"snapshot"`` leaves out ``exposure.byStrike``, the
+                per-strike views; omit it (or any other value) for them.
             symbol: The underlying, for resolving missing market inputs and
-                for a forward-priced index's methodology 2 book.
-            as_of: Methodology 2: the ISO 8601 instant the expiry scope is
-                applied at (default the request time). A leg counts until its
-                expiration session's close.
+                for a forward-priced index's book.
+            as_of: The ISO 8601 instant the expiry scope is applied at
+                (default the request time). A leg counts until its expiration
+                session's close.
 
         Returns:
-            :class:`ExposureResponse` — a ``oneOf`` union. Dispatch on
-            ``.root``: :class:`ExposureFullResult` or
-            :class:`ExposureSnapshot` for methodology 1,
-            :class:`ExposureResponseV2` (``.root.exposureV2``) for
-            methodology 2. ``.root.methodology`` names it.
+            :class:`ExposureComputeResponse`: ``.exposure`` (an
+            :class:`ExposureComputed`), read as
+            ``.exposure.assumedDealerBook.gex``, and ``.resolved`` where the
+            API filled a missing input.
 
         Raises:
             ValidationError: malformed strike rows, or a missing input.
             AuthenticationError / PermissionDeniedError: API key / scope.
-            ServerError: a 503 when no methodology is named and the default
-                could not be read (retryable; ``code`` is
-                ``DEFAULT_METHODOLOGY_UNAVAILABLE``).
         """
         payload = _drop_none({
             "strikes": strikes, "spotPrice": spot_price,
             "riskFreeRate": risk_free_rate, "dividendYield": dividend_yield,
-            "wallMaxDte": wall_max_dte, "methodology": methodology,
             "symbol": symbol, "asOf": as_of,
         })
         params = {"detail": detail} if detail else None
         body = self._transport.request(
             "POST", "/v1/compute/exposure", json=payload, params=params,
         )
-        return ExposureResponse.model_validate(body)
+        return ExposureComputeResponse.model_validate(body)
 
     def scenario(
         self,
@@ -859,32 +842,31 @@ class OASClient:
         """End-of-day dealer-positioning levels for a symbol (operationId
         ``data.exposure.bySymbol``).
 
-        A compact set of legacy (methodology 1) exposure levels computed over a
-        single 0-60 DTE universe (so those fields agree): ``gammaMagnet``,
-        ``gammaFlip``, ``callWall``, ``putWall``, ``dealerRegime``, net GEX/DEX,
-        the 30-day expected move, and the top contributing strikes. Beside them,
-        ``exposureV2`` is methodology 2's stored book, over its own expiry scope
-        rather than that window. One row per (symbol, date) — the symbol-keyed
-        EOD counterpart to :meth:`exposure`, which computes from a caller-supplied
-        live chain.
+        The gamma-derived levels over a single 0-60 DTE window: ``gammaMagnet``,
+        ``gammaFlip``, ``callWall``, ``putWall``, ``dealerRegime``, the 30-day
+        expected move, and the top contributing strikes (each a strike and its
+        rank). Beside them, ``exposure`` is the stored assumed dealer book, over
+        its own expiry scope rather than that window, or why there is none. One
+        row per (symbol, date): the symbol-keyed end-of-day counterpart to
+        :meth:`exposure`, which computes from a caller-supplied chain.
 
         Args:
             symbol: Underlying ticker (e.g. ``"TSLA"``).
             date: Optional ``YYYY-MM-DD`` session; defaults to the latest close.
             typed: ``True`` returns the :class:`EodExposureResponse` model, its
-                ``exposureV2`` (methodology 2) included; the default ``False``
-                keeps the ``dict`` this method has always returned.
+                ``exposure`` included; the default ``False`` keeps the ``dict``
+                this method has always returned.
 
         Returns:
             The exposure payload as a ``dict`` (see the ``EodExposureResponse``
             schema in the OpenAPI spec), or that model with ``typed=True``.
-            ``gammaMagnet`` / ``gammaFlip`` /
-            ``callWall`` / ``putWall`` may be ``None`` for thinly-traded names;
-            ``netGex`` / ``netDex`` units are spelled out in the ``units`` block.
+            The levels (``gammaMagnet``, ``gammaFlip``, ``callWall``,
+            ``putWall``, ``dealerRegime``) may be ``None`` where the stored
+            summary has none, such as a thinly traded name or a futures root.
 
         Raises:
             ValueError: empty ``symbol``.
-            NotFoundError: no usable EOD option data for the symbol/date.
+            NotFoundError: no end-of-day row for the symbol and date.
 
         >>> levels = client.exposure_eod("TSLA")
         >>> levels["gammaFlip"], levels["dealerRegime"]

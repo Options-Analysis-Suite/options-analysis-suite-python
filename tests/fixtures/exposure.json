@@ -1,8 +1,5 @@
 {
-  "methodology": 2,
-  "methodologySource": "request",
-  "exposureV2": {
-    "methodology": 2,
+  "exposure": {
     "rollModel": "log-forward-theil-sen-v1",
     "units": {
       "gex": "USD of delta per 1% move",

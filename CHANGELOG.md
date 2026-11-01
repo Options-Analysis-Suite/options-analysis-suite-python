@@ -3,63 +3,100 @@
 All notable changes to the `options-analysis-suite` Python SDK are documented
 in this file.
 
-The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and the project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
-As of `1.0.0` the SDK follows semantic versioning: backward-incompatible
-changes to the public surface require a major version bump, and any removal is
-preceded by a deprecation in a prior minor release. Breaking changes are called
-out in this file with **Breaking** at the start of the bullet.
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+The SDK follows the API: a release that removes or renames anything a caller
+uses marks each such change with **Breaking** at the start of its bullet, so
+read those bullets before upgrading.
 
 ## [Unreleased]
 
+## [1.6.0] (2026-10-31)
+
+The API's Greek exposure has one calculation: the assumed dealer book (dealers
+long the calls and short the puts, every contract of open interest) and Long OI
+over each side's bases, with their coverage. The earlier dealer-hedging fields,
+the choice between the two calculations and the compute endpoint's walls, flip
+and regime are gone. Code that read a removed field or passed a removed
+parameter needs the change its **Breaking** bullet names.
+
+### Removed
+
+- **Breaking**: `exposure(...)` no longer takes `methodology` or
+  `wall_max_dte`. The API refuses a request naming either with a 400 ("methodology
+  is no longer a parameter: exposure has one calculation."), and Python refuses
+  the keyword itself.
+- **Breaking**: `exposure(...)` returns `ExposureComputeResponse`: `.exposure`
+  (an `ExposureComputed`) and `.resolved` where the API filled a missing input.
+  The earlier union and its branches are gone; `ExposureResponse`,
+  `ExposureFullResult`, `ExposureSnapshot` and `ExposureStrike` are retired
+  names, not reused. Read the book as `.exposure.assumedDealerBook.gex`.
+- **Breaking**: the snapshot (`snapshot(...)`) no longer carries `netGex`,
+  `netDex` or the earlier per-strike curves. Its `exposure` holds the stored
+  book (`ExposureStored`) or why there is none (`ExposureUnavailable`).
+- **Breaking**: the end-of-day exposure answer (`exposure_eod(...)`) no longer
+  carries `netGex` or `netDex`, and its top contributing strikes are each a
+  strike and its rank, so its `schemaVersion` is now 2. Its levels (gamma
+  magnet, gamma flip, call and put walls, dealer regime) can be null, `exposure`
+  is always present, and it answers 200 whenever the session's row exists and
+  404 only when there is none.
+- **Breaking**: a regime row's `vector._meta` holds `levels` (the gamma-derived
+  levels: flip, walls, magnet, regime and the top strikes' ranks) and `exposure`
+  (the book) in place of its earlier two blocks.
+
+### Changed
+
+- **Breaking**: the book's block is `exposure` on every answer that carries it,
+  and its models are `ExposureBlock`, `ExposureBookValues`,
+  `ExposureSideBases`, `ExposureCoverage`, `ExposureQualifier`,
+  `ExposureStored`, `ExposureUnavailable`, `ExposureComputed` and
+  `ExposureBookStrike`.
+- **Breaking**: a book that is not stored reads the reason `"no stored book"`.
+- API: the WebSocket stream's protocol is 2.0. A subscribe naming
+  `exposureOptions.methodology` or `exposureOptions.wallMaxDte` gets an error
+  frame and is not subscribed; the subscribed echo carries no label; frames
+  carry `exposure`.
+- The versioning paragraph above now says what the SDK does.
+
+A client that caches the API's answers itself may hold one of the earlier shape
+for up to the route's cache lifetime after the API changes (an hour for the
+snapshot and the end-of-day exposure, six hours for the daily regime rows).
+
 ## [1.5.0] (2026-10-24)
 
-The API publishes a second Greek exposure methodology beside the legacy one.
-Methodology 1 (legacy) is the dealer-hedging convention with walls, the gamma
-flip and the regime. Methodology 2 is the assumed dealer book and Long OI over
-each side's bases, with their coverage, and no walls, flip or regime. The
-SDK's signatures are compatible: none loses or reorders a parameter, and
-every new parameter and every new field is optional. Every method keeps its
-return type; `ExposureResponse`'s union gains a branch that a call naming no
-methodology receives only once the service's default changes (see below).
-One API value changes on purpose: the regime rows'
-`vector._meta.gexV2.source` words (under Changed).
+The API published the assumed dealer book beside its earlier dealer-hedging
+exposure fields: the book and Long OI over each side's bases, with their
+coverage, and no walls, flip or regime. The SDK's signatures stayed
+compatible: no parameter was lost or reordered, and every new parameter and
+field was optional. One API value changed on purpose: the source words of the
+regime rows' book block (under Changed). The choice between the two
+calculations and the earlier fields were removed in 1.6.0.
 
 ### Added
 
-- `exposure(...)` takes `methodology` (`1` or `2`), `symbol` and `as_of`:
-  - an omitted `methodology` is the service's central default, and the
-    answer's `methodologySource` says `"default"`;
-  - `symbol` lets the API resolve a missing spot, rate or yield, and makes
-    methodology 2 price a forward-priced index (such as `"SPX"`) on each
-    expiration's forward, reading only the rate;
-  - `as_of` (ISO 8601) is the instant methodology 2's expiry scope is applied
-    at: a leg counts until its expiration session's close, 16:00 ET or 13:00
-    ET on an NYSE early close.
-- `exposure_eod(..., typed=True)` returns the `EodExposureResponse` model,
-  `exposureV2` included. The default stays the `dict` it has always returned.
-- Regenerated models for the current API contract:
-  - `ExposureResponse` is a flat union of `ExposureFullResult`,
-    `ExposureSnapshot` and the new `ExposureResponseV2`
-    (`.root.exposureV2`, an `ExposureV2Computed`). `.root.methodology` names
-    the branch: `Literal[1]` on the first two, `Literal[2]` on the third.
-    `.root.netGamma` and `.root.snapshot` work as before.
-  - `ExposureFullResult` and `ExposureSnapshot` gain the optional label:
-    `methodology`, `methodologySource`, and `methodologyStale` (sent only
-    when the default could not be re-read and its last good value was used).
-  - `SnapshotResponse.exposureV2` and `EodExposureResponse.exposureV2` hold
-    methodology 2 for the stored end-of-day book, beside the legacy fields
-    (now described as methodology 1). Each is an `ExposureV2Stored` (with its
-    provenance, its definition and its expiry qualifier) or an
-    `ExposureV2Unavailable` with a reason, never methodology 1's numbers.
-    The newest date carries per-strike views where its curve is from the same
-    run.
-  - `RegimeExposureMeta`, `RegimeExposureV1`, `RegimeExposureStrike` and
-    `RegimeExposureAvailability` document a regime row's `vector._meta`: its
-    `gex` (methodology 1) and `gexV2` (methodology 2) blocks. The regime
-    methods still return their rows as `dict`s, so validate
-    `row["vector"]["_meta"]` yourself if you want the model.
+- `exposure(...)` took a parameter choosing the calculation (the earlier
+  dealer-hedging convention or the book; omitted, the service's central
+  default, which the answer named), and `symbol` and `as_of`:
+  - `symbol` lets the API resolve a missing spot, rate or yield, and makes the
+    book price a forward-priced index (such as `"SPX"`) on each expiration's
+    forward, reading only the rate;
+  - `as_of` (ISO 8601) is the instant the book's expiry scope is applied at: a
+    leg counts until its expiration session's close, 16:00 ET or 13:00 ET on an
+    NYSE early close.
+- `exposure_eod(..., typed=True)` returns the `EodExposureResponse` model, the
+  book's block included. The default stays the `dict` it has always returned.
+- Regenerated models for the API contract of the day:
+  - the compute answer became a union of the two earlier shapes and the
+    book's, each naming its calculation;
+  - the earlier shapes gained an optional label naming the calculation and
+    where it came from;
+  - `SnapshotResponse` and `EodExposureResponse` gained the stored end-of-day
+    book beside the earlier fields: the book with its provenance, definition
+    and expiry qualifier, or its absence with a reason, never the earlier
+    numbers. The newest date carried per-strike views where its curve was from
+    the same run.
+  - `RegimeExposureMeta` and the models beside it documented a regime row's
+    `vector._meta`: its earlier block and its book block. The regime methods
+    still return their rows as `dict`s.
 
 ### Changed
 
@@ -68,18 +105,11 @@ One API value changes on purpose: the regime rows'
   required unless `symbol` lets the API resolve it, and a missing one is a 422
   naming it. `spot_price` is optional, so a call that sends `symbol` can leave
   it out.
-- API: a regime row's `vector._meta.gexV2.source` now reads
-  `"eod_options_chain"` (a daily row) or `"intraday_options_chain"` (an
-  intraday row), the words the other endpoints use, in place of internal
-  storage names.
-- API: the WebSocket stream's exposure channel takes
-  `exposureOptions.methodology` per subscription (protocol version 1.1). See
-  the streaming documentation.
-
-When the service's default methodology changes, the change will be announced.
-An `exposure()` call without `methodology` will then return
-`ExposureResponseV2`. Pass `methodology=1` to keep the legacy shapes across
-that change.
+- API: a regime row's book block `source` now reads `"eod_options_chain"` (a
+  daily row) or `"intraday_options_chain"` (an intraday row), the words the
+  other endpoints use, in place of internal storage names.
+- API: the WebSocket stream's exposure channel took a per-subscription choice
+  of calculation (protocol version 1.1). See the streaming documentation.
 
 ## [1.4.0] (2026-10-22)
 
@@ -594,7 +624,7 @@ checked against the deployed OpenAPI spec.
   `ServerError`.
 - `BrokerCredentials` BYOK helpers: `TradierCredentials(token=...)`,
   `TastytradeCredentials(refresh_token=..., client_secret=...)`.
-- Generated Pydantic v2 response models in `oas._generated.models`
+- Generated Pydantic response models in `oas._generated.models`
   (88 classes from the OpenAPI spec). Post-processed to use
   `extra='ignore'` so additive server fields don't break older SDK
   versions.

@@ -4,7 +4,6 @@ We don't need 49 method-by-method tests — the wiring is mechanical and the
 drift suite already proves coverage. These tests pin a few high-leverage
 behaviors:
 - iter_metrics chunks symbols correctly (regression risk for the batch API)
-- exposure dispatches the oneOf union shape correctly
 - price/greeks send camelCase JSON (the snake_case → camelCase rename
   is the one place a typo would silently break things)
 - query-string params for ``from`` / ``to`` etc. send the renamed value
@@ -96,59 +95,6 @@ def test_metrics_batch_rejects_oversized_symbol_list() -> None:
             client.metrics_batch(syms)
 
     assert len(respx.calls) == 0
-
-
-@respx.mock
-def test_exposure_full_returns_oneof_full_result() -> None:
-    """Default exposure response is the {snapshot, byStrike} union member."""
-    fixture = {
-        "snapshot": {
-            "spotPrice": 650.0,
-            "netGamma": 1000, "netDelta": -500, "netVega": 100,
-            "netVanna": 10, "netCharm": -5, "netVomma": 8,
-            "callWall": 660, "putWall": 640, "gammaFlip": 655, "absGamma": 660,
-            "gammaConcentration": 0.3, "regime": "positive",
-            "topStrikes": [],
-        },
-        "byStrike": [],
-    }
-    respx.post("https://data.optionsanalysissuite.com/v1/compute/exposure").mock(
-        return_value=Response(200, json=fixture)
-    )
-
-    with OASClient(api_key="oas_test_xyz") as client:
-        result = client.exposure(strikes=[], spot_price=650.0)
-
-    # ExposureResponse is RootModel[ExposureFullResult | ExposureSnapshot].
-    assert hasattr(result, "root")
-    assert hasattr(result.root, "snapshot")
-    assert result.root.snapshot.spotPrice == 650.0
-
-
-
-
-@respx.mock
-def test_exposure_full_allows_missing_abs_gamma_for_backward_compat() -> None:
-    """Older snapshots without absGamma should still deserialize."""
-    fixture = {
-        "snapshot": {
-            "spotPrice": 650.0,
-            "netGamma": 1000, "netDelta": -500, "netVega": 100,
-            "netVanna": 10, "netCharm": -5, "netVomma": 8,
-            "callWall": 660, "putWall": 640, "gammaFlip": 655,
-            "gammaConcentration": 0.3, "regime": "positive",
-            "topStrikes": [],
-        },
-        "byStrike": [],
-    }
-    respx.post("https://data.optionsanalysissuite.com/v1/compute/exposure").mock(
-        return_value=Response(200, json=fixture)
-    )
-
-    with OASClient(api_key="oas_test_xyz") as client:
-        result = client.exposure(strikes=[], spot_price=650.0)
-
-    assert result.root.snapshot.absGamma is None
 
 
 @respx.mock
@@ -465,15 +411,13 @@ def test_exposure_eod_returns_levels_and_forwards_date() -> None:
     def _handler(request):
         captured["date"] = request.url.params.get("date")
         return Response(200, json={
-            "schemaVersion": 1,
+            "schemaVersion": 2,
             "symbol": "TSLA",
             "date": "2026-05-28",
             "asOf": "2026-05-28T21:30:00Z",
             "source": "eod_options_snapshot",
             "dteWindow": {"minDte": 0, "maxDte": 60, "unit": "calendar_days"},
             "spotPrice": 247.35,
-            "netGex": 1284500000,
-            "netDex": -342900000,
             "gammaMagnet": 250,
             "gammaFlip": 242,
             "callWall": 260,
@@ -481,13 +425,10 @@ def test_exposure_eod_returns_levels_and_forwards_date() -> None:
             "dealerRegime": "positive",
             "expectedMovePct30d": 0.045,
             "expectedMove30d": 11.13,
-            "topContributingStrikes": [{"strike": 250, "netGex": 421300000, "netDex": 18400000}],
+            "topContributingStrikes": [{"strike": 250, "rank": 1}],
             "topContributingStrikesLimit": 10,
-            "units": {
-                "netGex": "dealer-perspective dollar delta change for a 1% spot move",
-                "netDex": "dealer-perspective dollar delta exposure",
-                "expectedMovePct30d": "decimal fraction",
-            },
+            "units": {"expectedMovePct30d": "decimal fraction"},
+            "exposure": {"available": False, "reason": "no stored book"},
         })
 
     respx.get("https://data.optionsanalysissuite.com/v1/data/exposure/TSLA").mock(side_effect=_handler)

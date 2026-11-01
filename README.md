@@ -25,7 +25,7 @@ from oas import MoomooCredentials, OASClient, SchwabCredentials, TastytradeCrede
 with OASClient(api_key="oas_live_...") as client:
     # Data: cached EOD analytics
     snap = client.snapshot("SPY")
-    print(snap.atmIv, snap.netGex, snap.maxPain)
+    print(snap.atmIv, snap.maxPain, snap.exposure)
 
     if snap.maxPainCurve:
         for row in snap.maxPainCurve:
@@ -135,7 +135,7 @@ The full hierarchy: `OASError` → `AuthenticationError`, `ValidationError`,
 
 ## Models
 
-Response objects are typed Pydantic v2 models. Import them from
+Response objects are typed Pydantic models. Import them from
 `oas._generated.models` for type hints. The classes use `extra='ignore'`
 so additive server fields (e.g., a new metric in `MetricsResponse`) don't
 break older SDK versions; older SDKs simply omit unknown fields.
